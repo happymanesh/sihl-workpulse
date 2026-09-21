@@ -87,7 +87,9 @@ jobs:
         run: |
           psql "postgresql://workpulse:workpulse_ci_password@localhost:5432/postgres" \
             -v ON_ERROR_STOP=1 -c 'CREATE DATABASE synapse_test'
-          psql "$SYNAPSE_DATABASE_URL" \
+          # ?schema= is a Prisma parameter. libpq rejects it as an unknown URI
+          # query parameter, so strip it before handing the URL to psql.
+          psql "${SYNAPSE_DATABASE_URL%%\?*}" \
             -v ON_ERROR_STOP=1 -f packages/db/ci/synapse-directory-fixture.sql
 
       - name: Seed reference data
