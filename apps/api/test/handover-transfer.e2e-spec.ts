@@ -174,11 +174,19 @@ const admin = actor(`${RUN}-admin`, ["SYSTEM_ADMIN"]);
     expect(before?.departmentId).toBe(oldDeptId);
 
     // Clear the remaining hand-over items so nothing blocks.
+    //
+    // Only tasks THIS suite created are transferred for real. The suites run in
+    // parallel against one database and share the seeded employees, so another
+    // suite's teardown can delete a task between this handover being built and
+    // this line running - which surfaced in CI as a raw Prisma "record not
+    // found". Anything not ours is waived instead: the assertion here is about
+    // the department moving on completion, not about who owns a stranger's task.
     const h = await handovers.get(moverId);
+    const mine = new Set(taskIds);
     for (const item of h!.items) {
       if (item.disposition !== HandoverItemDisposition.HAND_OVER) continue;
       if (item.transferredAt) continue;
-      if (item.itemType === HandoverItemType.OPEN_TASK) {
+      if (item.itemType === HandoverItemType.OPEN_TASK && mine.has(item.entityId)) {
         await handovers.transferItem(releasing, item.id, successorId);
       } else {
         await prisma.handoverItem.update({

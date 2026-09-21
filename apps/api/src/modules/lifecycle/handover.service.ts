@@ -333,7 +333,18 @@ export class HandoverService {
       throw new BadRequestException("Cannot hand work over to the person handing it over");
     }
 
-    await prisma.$transaction(async (tx) => {
+    // The list is a snapshot taken when the handover was built. What it points
+    // at can legitimately be gone by now - a task cancelled and purged, a desk
+    // card retired - and a raw "record to update not found" from the database
+    // tells whoever is doing the handover nothing they can act on.
+    const stale = () =>
+      new BadRequestException(
+        `The ${item.itemType.replace(/_/g, " ").toLowerCase()} behind "${item.description}" no longer exists. ` +
+          "Rebuild the handover to refresh the list.",
+      );
+
+    try {
+      await prisma.$transaction(async (tx) => {
       switch (item.itemType) {
         case HandoverItemType.OPEN_TASK:
           await tx.task.update({ where: { id: item.entityId }, data: { assigneeEmployeeId: toEmployeeId } });
@@ -385,7 +396,12 @@ export class HandoverService {
         where: { id: itemId },
         data: { transferredToEmployeeId: toEmployeeId, transferredAt: new Date() },
       });
-    });
+      });
+    } catch (err) {
+      // P2025: an operation depended on a record that was required but absent.
+      if ((err as { code?: string }).code === "P2025") throw stale();
+      throw err;
+    }
 
     await this.audit.record({
       entityType: "Handover",
