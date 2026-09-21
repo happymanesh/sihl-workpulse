@@ -1,0 +1,42 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+dist/
+build/
+.next/
+out/
+
+# Env
+# Everything .env-ish is ignored and .env.example is the one exception, so a
+# stray copy (.env.bak, .env.prod) cannot be committed by being un-thought-of.
+# These files carry DATABASE_URL, SYNAPSE_DATABASE_URL, SESSION_SECRET and the
+# Frappe and Keycloak credentials.
+.env
+.env.*
+!.env.example
+
+# Prisma
+packages/db/prisma/migrations/dev.db*
+
+# Logs
+*.log
+npm-debug.log*
+
+# IDE
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test / coverage
+coverage/
+
+# Misc
+*.tsbuildinfo
+.turbo/

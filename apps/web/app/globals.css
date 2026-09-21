@@ -1,0 +1,175 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/**
+ * workPulse theme tokens.
+ *
+ * Three states, not two: `.dark` / [data-theme="dark"] is an explicit choice,
+ * `.light` / [data-theme="light"] is the explicit opposite, and an unstamped
+ * document follows the operating system. Every colour a component uses comes
+ * from this file - no component should ever contain a literal colour.
+ */
+
+@layer base {
+  :root {
+    /* surfaces */
+    --background: 210 25% 98%;
+    --foreground: 217 33% 12%;
+    --card: 0 0% 100%;
+    --card-foreground: 217 33% 12%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 217 33% 12%;
+    --muted: 214 25% 95%;
+    --muted-foreground: 215 16% 45%;
+    --border: 214 20% 88%;
+    --input: 214 20% 88%;
+    --ring: 215 51% 40%;
+
+    /* brand */
+    --primary: 215 51% 25%;
+    --primary-foreground: 210 40% 98%;
+    --accent: 214 32% 93%;
+    --accent-foreground: 215 51% 25%;
+
+    /* semantic state */
+    --success: 152 55% 30%;
+    --success-foreground: 0 0% 100%;
+    --success-subtle: 152 45% 94%;
+    --warning: 32 85% 36%;
+    --warning-foreground: 0 0% 100%;
+    --warning-subtle: 40 85% 93%;
+    --danger: 0 65% 44%;
+    --danger-foreground: 0 0% 100%;
+    --danger-subtle: 0 70% 96%;
+    --info: 205 72% 38%;
+    --info-foreground: 0 0% 100%;
+    --info-subtle: 205 75% 95%;
+
+    /* task priority */
+    --priority-critical: 0 68% 45%;
+    --priority-urgent: 18 78% 44%;
+    --priority-high: 32 85% 38%;
+    --priority-medium: 205 70% 40%;
+    --priority-low: 215 14% 50%;
+
+    --shadow-color: 217 33% 20%;
+    --radius: 0.375rem;
+  }
+
+  /* System preference, unless an explicit light choice is stamped. */
+  @media (prefers-color-scheme: dark) {
+    :root:not(.light):not([data-theme="light"]) {
+      --background: 218 30% 8%;
+      --foreground: 210 25% 92%;
+      --card: 218 27% 11%;
+      --card-foreground: 210 25% 92%;
+      --popover: 218 27% 12%;
+      --popover-foreground: 210 25% 92%;
+      --muted: 217 22% 17%;
+      --muted-foreground: 215 16% 62%;
+      --border: 217 20% 20%;
+      --input: 217 20% 22%;
+      --ring: 214 60% 55%;
+
+      --primary: 214 60% 58%;
+      --primary-foreground: 218 40% 10%;
+      --accent: 217 25% 18%;
+      --accent-foreground: 210 30% 90%;
+
+      --success: 152 48% 52%;
+      --success-foreground: 152 60% 8%;
+      --success-subtle: 152 35% 15%;
+      --warning: 38 78% 56%;
+      --warning-foreground: 38 70% 10%;
+      --warning-subtle: 38 40% 16%;
+      --danger: 0 70% 62%;
+      --danger-foreground: 0 60% 10%;
+      --danger-subtle: 0 40% 17%;
+      --info: 205 75% 60%;
+      --info-foreground: 205 70% 10%;
+      --info-subtle: 205 40% 17%;
+
+      --priority-critical: 0 72% 62%;
+      --priority-urgent: 18 80% 58%;
+      --priority-high: 38 78% 55%;
+      --priority-medium: 205 72% 58%;
+      --priority-low: 215 14% 58%;
+
+      --shadow-color: 218 50% 3%;
+    }
+  }
+
+  /* Explicit dark choice wins over a light OS setting. */
+  .dark,
+  [data-theme="dark"] {
+    --background: 218 30% 8%;
+    --foreground: 210 25% 92%;
+    --card: 218 27% 11%;
+    --card-foreground: 210 25% 92%;
+    --popover: 218 27% 12%;
+    --popover-foreground: 210 25% 92%;
+    --muted: 217 22% 17%;
+    --muted-foreground: 215 16% 62%;
+    --border: 217 20% 20%;
+    --input: 217 20% 22%;
+    --ring: 214 60% 55%;
+
+    --primary: 214 60% 58%;
+    --primary-foreground: 218 40% 10%;
+    --accent: 217 25% 18%;
+    --accent-foreground: 210 30% 90%;
+
+    --success: 152 48% 52%;
+    --success-foreground: 152 60% 8%;
+    --success-subtle: 152 35% 15%;
+    --warning: 38 78% 56%;
+    --warning-foreground: 38 70% 10%;
+    --warning-subtle: 38 40% 16%;
+    --danger: 0 70% 62%;
+    --danger-foreground: 0 60% 10%;
+    --danger-subtle: 0 40% 17%;
+    --info: 205 75% 60%;
+    --info-foreground: 205 70% 10%;
+    --info-subtle: 205 40% 17%;
+
+    --priority-critical: 0 72% 62%;
+    --priority-urgent: 18 80% 58%;
+    --priority-high: 38 78% 55%;
+    --priority-medium: 205 72% 58%;
+    --priority-low: 215 14% 58%;
+
+    --shadow-color: 218 50% 3%;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv05" 1;
+  }
+
+  /* Digits line up in every table, workload count and duration in the app. */
+  table,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-none ring-2 ring-ring ring-offset-2 ring-offset-background;
+  }
+}
+
+@layer components {
+  /* Uppercase micro-label used for table headers and field captions. Defined
+     once here so density stays consistent instead of being re-tuned per screen. */
+  .label-caps {
+    @apply text-2xs font-semibold uppercase tracking-[0.08em] text-muted-foreground;
+  }
+}

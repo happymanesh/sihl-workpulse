@@ -1,0 +1,54 @@
+import * as React from "react";
+import { SidebarNav } from "./sidebar-nav";
+import { ThemeToggle } from "./theme-toggle";
+
+/**
+ * Application chrome: fixed sidebar, sticky page header, scrolling content.
+ *
+ * The header is a slot rather than a prop-driven title bar because MIS and
+ * task screens need filters, view switchers and actions in it - baking in a
+ * single title-plus-button shape now would be undone in Phase 1.
+ */
+export function AppShell({
+  children,
+  header,
+}: {
+  children: React.ReactNode;
+  header?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-dvh">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card md:flex">
+        <div className="flex h-12 items-center gap-2 border-b border-border px-4">
+          <span className="text-sm font-semibold tracking-tight">workPulse</span>
+          <span className="label-caps">SIHL</span>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <SidebarNav />
+        </div>
+        <div className="border-t border-border px-3 py-2.5">
+          <ThemeToggle />
+        </div>
+      </aside>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-5 backdrop-blur">
+          {header}
+        </header>
+        <main className="flex-1 px-5 py-6">{children}</main>
+      </div>
+    </div>
+  );
+}
+
+/** Page title for the header slot, kept here so spacing stays consistent. */
+export function PageTitle({ title, description }: { title: string; description?: string }) {
+  return (
+    <div className="flex min-w-0 items-baseline gap-2.5">
+      <h1 className="truncate text-sm font-semibold">{title}</h1>
+      {description && (
+        <p className="hidden truncate text-xs text-muted-foreground sm:block">{description}</p>
+      )}
+    </div>
+  );
+}

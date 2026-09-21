@@ -1,0 +1,37 @@
+{
+  "name": "sihl-workpulse",
+  "version": "0.0.1",
+  "private": true,
+  "description": "SIHL workPulse - Enterprise Work Management Platform",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run build:db && npm run dev:apps",
+    "dev:apps": "concurrently -n api,web -c blue,green \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",
+    "build:db": "npm run db:generate && npm run build -w packages/db",
+    "build": "npm run build:db && npm run build -w apps/api && npm run build -w apps/web",
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web && npm run typecheck -w packages/shared-types",
+    "test": "npm run test -w apps/api",
+    "assert-target": "node packages/db/scripts/assert-target-db.js",
+    "db:generate": "prisma generate --schema packages/db/prisma/schema.prisma",
+    "db:migrate": "npm run assert-target && prisma migrate dev --schema packages/db/prisma/schema.prisma",
+    "db:migrate:deploy": "npm run assert-target && prisma migrate deploy --schema packages/db/prisma/schema.prisma",
+    "db:status": "prisma migrate status --schema packages/db/prisma/schema.prisma",
+    "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
+    "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
+    "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "dotenv": "^16.4.5",
+    "prisma": "^5.14.0",
+    "tsx": "^4.10.0",
+    "typescript": "^5.4.5"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

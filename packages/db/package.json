@@ -1,0 +1,21 @@
+{
+  "name": "@workpulse/db",
+  "version": "0.0.1",
+  "private": true,
+  "//": "main points at compiled JS, not src/index.ts. Node cannot require a .ts file at runtime - doing so silently yields undefined named exports, which surfaces much later as 'Cannot read properties of undefined'. Run `npm run build -w packages/db` after changing the schema or this package's source.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.14.0"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.5",
+    "prisma": "^5.14.0",
+    "tsx": "^4.10.0",
+    "typescript": "^5.4.5"
+  }
+}

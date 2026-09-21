@@ -1,0 +1,1750 @@
+// SIHL workPulse - Prisma schema
+//
+// Built so far, in phase order:
+//   Phase 0  Employee/Department read-cache synced from Frappe HR (which stays
+//            the sole master), User as the Synapse identity join, SynapseRoleMap,
+//            and the append-only AuditLog (BRS Section 19).
+//   Phase 1  DeskCard + DeskCardActivity (the spine, per Addendum 01), TaskType,
+//            Task with its explicit lifecycle, checklists and status history.
+//   Phase 2  TimeBlock and CapacityBudget - capacity as real minutes.
+//
+// Three rules this file depends on and should not quietly lose:
+//   - Employee/Department are a CACHE. Only the sync job writes them.
+//   - A DeskCardActivity owns its recurrence; there is no free-standing
+//     RecurringTaskTemplate (Addendum 01 Section 3.3).
+//   - AuditLog has no delete path for any role, including SYSTEM_ADMIN.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// =============================================================================
+// PHASE 0: Employee / Department read-cache (source of truth stays Frappe HR)
+// =============================================================================
+
+/// Cached read copy of Frappe HR's Employee doctype. Never write-authoritative -
+/// the sync job (apps/api/src/jobs/frappe-hr-sync.job.ts) overwrites these rows
+/// on each run. See BRS Section 4.2 for why this is a cache, not a duplicate master.
+model Employee {
+  id               String   @id @default(cuid())
+  frappeEmployeeId String   @unique // Frappe HR's own Employee ID - the join key
+  name             String
+  email            String   @unique
+  designation      String?
+  isActive         Boolean  @default(true)
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  managerId String?
+  manager   Employee?  @relation("EmployeeManager", fields: [managerId], references: [id])
+  reports   Employee[] @relation("EmployeeManager")
+
+  user User?
+
+  // Phase 1
+  deskCardsHeld     DeskCard[]              @relation("DeskCardHolder")
+  deskCardHistory   DeskCardHolderHistory[]
+  tasksAssigned     Task[]                  @relation("TaskAssignee")
+  tasksReviewing    Task[]                  @relation("TaskReviewer")
+  timeBlocks        TimeBlock[]             @relation("TimeBlockOwner")
+  capacityBudget    CapacityBudget?
+
+  // Phase 3
+  policiesOwned     Policy[]                @relation("PolicyOwner")
+  policiesApproving Policy[]                @relation("PolicyApprover")
+  processesOwned    Process[]               @relation("ProcessOwner")
+
+  // Phase 4
+  teamsOwned        Team[]                  @relation("TeamOwner")
+  teamMemberships   TeamMember[]
+  projectsOwned     Project[]               @relation("ProjectOwner")
+  projectsSponsored Project[]               @relation("ProjectSponsor")
+  projectsManaged   Project[]               @relation("ProjectManager")
+  raciAssignments   RaciAssignment[]
+  daciAssignments   DaciAssignment[]
+
+  // Phase 5
+  delegationsFrom   Delegation[]            @relation("DelegationFrom")
+  delegationsTo     Delegation[]            @relation("DelegationTo")
+  handovers         Handover[]
+
+  // Phase 6
+  flagsAbout        TaskFlag[]              @relation("FlagSubject")
+  analyticsPeriods  AnalyticsPeriod[]
+  appraisalEvidence   AppraisalEvidence[]
+  shadowScores        ShadowScore[]
+  commandCentreEvents CommandCentreEvent[] @relation("CommandCentreSubject")
+
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([departmentId])
+  @@index([managerId])
+  @@map("employees")
+}
+
+/// Cached read copy of Frappe HR's Department doctype.
+model Department {
+  id                 String   @id @default(cuid())
+  frappeDepartmentId String   @unique
+  name               String
+
+  parentDepartmentId String?
+  parentDepartment   Department?  @relation("DepartmentHierarchy", fields: [parentDepartmentId], references: [id])
+  childDepartments   Department[] @relation("DepartmentHierarchy")
+
+  employees Employee[]
+
+  // Phase 1
+  deskCards DeskCard[]
+  tasks     Task[]
+
+  // Phase 5
+  slaDefinitions SlaDefinition[]
+
+  lastSyncedAt DateTime @default(now())
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("departments")
+
+  commandCentreEvents CommandCentreEvent[]
+
+  handoversInbound Handover[] @relation("HandoverDestination")
+}
+
+// =============================================================================
+// PHASE 0: Auth linkage + audit trail
+// =============================================================================
+
+/// Joins a Synapse identity to a Frappe HR Employee, and holds any workPulse
+/// role grants that Synapse does not express.
+///
+/// Three masters, one join row (see docs/synapse-integration.md):
+///   Synapse    owns authentication - who you are. Never duplicated here; no
+///              password, no password hash, ever.
+///   Frappe HR  owns the org - department, manager, designation (BRS 4.2).
+///   workPulse  owns only this join and its own authorisation grants.
+///
+/// Rows are created lazily on first successful sign-in rather than provisioned
+/// in advance, so deactivating someone in Synapse is sufficient to lock them
+/// out - there is no second place to remember to disable them.
+model User {
+  id              String @id @default(cuid())
+  /// Synapse UserDetails.uid. The join key, and stable across username changes.
+  synapseUserUid  Int    @unique
+  /// Denormalised from Synapse for display and audit attribution. Refreshed on
+  /// sign-in; never authoritative.
+  synapseUsername String
+
+  employeeId String?   @unique
+  employee   Employee? @relation(fields: [employeeId], references: [id])
+
+  /// True when no Frappe HR employee matched this user's email. Surfaced to
+  /// admins rather than left silent - an unlinked user and a user with no work
+  /// assigned look identical otherwise (decision S-05).
+  isEmployeeUnlinked Boolean @default(false)
+
+  /// Roles granted directly in workPulse, on top of whatever the user's Synapse
+  /// roles map to. This exists for grants Synapse has no concept of - notably
+  /// AUDIT, which BRS Section 18 requires to sit outside the line hierarchy and
+  /// which Appendix F says needs joint CTO + Compliance sign-off.
+  ///
+  /// Effective roles = mapped(Synapse roles) UNION localRoles. Deliberately no
+  /// `isAuditRole` boolean alongside this: two places to express one fact is
+  /// exactly how they drift apart.
+  localRoles WorkPulseRole[]
+
+  lastSeenAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@map("users")
+}
+
+/// Maps a Synapse RoleMaster.roleCode onto a workPulse role.
+///
+/// Explicit rows, never name matching: Synapse roles are user-editable rows, so
+/// inferring "SIHL_MANAGER" means MANAGER would silently break the first time
+/// somebody renames a role. An unmapped Synapse role grants nothing, and a user
+/// with no mapped role falls back to EMPLOYEE - elevated roles are never
+/// defaulted into existence.
+model SynapseRoleMap {
+  id              Int           @id @default(autoincrement())
+  synapseRoleCode String        @unique @map("synapse_role_code")
+  workPulseRole   WorkPulseRole @map("workpulse_role")
+  isActive        Boolean       @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("synapse_role_map")
+}
+
+enum WorkPulseRole {
+  SYSTEM_ADMIN
+  EMPLOYEE
+  MANAGER
+  DEPARTMENT_HEAD
+  PROJECT_MANAGER
+  EXECUTIVE
+  EXECUTIVE_RESTRICTED // CEO/management confidential-task visibility, Section 18
+  AUDIT
+  INTEGRATION_SERVICE
+}
+
+/// Generic, append-only audit trail. Section 19 of the BRS: every entry answers
+/// who changed what, from what to what, when, and why. No application-layer
+/// role - including SYSTEM_ADMIN - gets a delete path on this table.
+model AuditLog {
+  id         String   @id @default(cuid())
+  entityType String // e.g. "Task", "Project", "Employee" (Phase 1+)
+  entityId   String
+  action     String // e.g. "created", "status_changed", "reassigned"
+  actorId    String? // User.id; null for system/scheduled-job actions
+  actorType  ActorType @default(USER)
+  beforeJson Json?
+  afterJson  Json?
+  reason     String? // mandatory for reassignment/reopen/cancel per BRS business rules
+  createdAt  DateTime @default(now())
+
+  @@index([entityType, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+enum ActorType {
+  USER
+  SYSTEM
+  INTEGRATION
+}
+
+// =============================================================================
+// PHASE 1: Desk Card, Activity, Task Type, Task lifecycle
+//
+// Per Addendum 01 (approved 7 Sep 2026), the Desk Card - not the Task - is the
+// spine. A Desk Card describes what a role is standingly responsible for; Tasks
+// are what that responsibility produces. Ad hoc and project Tasks exist without
+// a Desk Card and that is normal, never an exception (Addendum 01 3.2a).
+// =============================================================================
+
+enum Priority {
+  CRITICAL
+  URGENT
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum ApprovalStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  RETIRED
+}
+
+/// Categorises a Task and switches on the optional behaviours the BRS attaches
+/// to Task Type (Section 13): verification, evidence, maker-checker, auto-close.
+/// SLA tier and RACI applicability join this model in Phases 4-5.
+model TaskType {
+  id   String @id @default(cuid())
+  code String @unique
+  name String
+
+  /// Section 14.1: not every Task Type requires Verification before Closure.
+  requiresVerification Boolean @default(false)
+  /// TM-FR-062: closure without evidence is flagged for review on these types.
+  requiresEvidence     Boolean @default(false)
+  /// Addendum 01 Section 9: Verification under enforced segregation of duties.
+  requiresMakerChecker Boolean @default(false)
+  /// For types that do NOT require verification, auto-close this long after
+  /// Completed. Null means it stays Completed until a human closes it.
+  autoCloseAfterHours  Int?
+
+  isActive Boolean @default(true)
+
+  activities DeskCardActivity[]
+  tasks      Task[]
+
+  // Phase 5
+  slaDefinitions SlaDefinition[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("task_types")
+}
+
+/// The standing set of operational obligations attached to a role.
+///
+/// Held by exactly one Employee at a time but outliving any individual holder,
+/// which is what makes one-click handover possible without destroying history
+/// (Addendum 01 F2-01). Never deleted - Retired instead.
+model DeskCard {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  departmentId String
+  department   Department @relation(fields: [departmentId], references: [id])
+
+  status ApprovalStatus @default(DRAFT)
+
+  /// Current holder. Null is legitimate: an approved card between holders stops
+  /// generating work rather than assigning it to nobody.
+  holderEmployeeId String?
+  holder           Employee? @relation("DeskCardHolder", fields: [holderEmployeeId], references: [id])
+  holderSince      DateTime?
+
+  /// Recorded but never a gate on generation (Addendum 01 Section 4, rule 8).
+  acknowledgedAt DateTime?
+
+  approvedByUserId String?
+  approvedAt       DateTime?
+
+  activities    DeskCardActivity[]
+  holderHistory DeskCardHolderHistory[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([departmentId])
+  @@index([holderEmployeeId])
+  @@map("desk_cards")
+}
+
+/// Append-only record of who held a card and when. Section 15.7's rule that the
+/// original owner is never overwritten applies here as much as to Tasks: a
+/// transfer adds a row, it does not edit one.
+model DeskCardHolderHistory {
+  id         String   @id @default(cuid())
+  deskCardId String
+  deskCard   DeskCard @relation(fields: [deskCardId], references: [id])
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  fromDate DateTime
+  toDate   DateTime?
+  reason   String?
+
+  actorUserId String?
+  createdAt   DateTime @default(now())
+
+  @@index([deskCardId])
+  @@index([employeeId])
+  @@map("desk_card_holder_history")
+}
+
+enum RecurrenceFrequency {
+  DAILY
+  WEEKLY
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// One standing obligation on a Desk Card - the unit that is costed, scheduled,
+/// controlled and audited.
+///
+/// IMPORTANT: this SUPERSEDES the BRS's free-standing Recurring Task Template
+/// (Section 13.A). Recurrence is a property of an Activity, and there is
+/// exactly one recurrence engine. See Addendum 01 Section 3.3 before touching
+/// anything here.
+model DeskCardActivity {
+  id         String   @id @default(cuid())
+  deskCardId String
+  deskCard   DeskCard @relation(fields: [deskCardId], references: [id])
+
+  title       String
+  description String?
+
+  taskTypeId String
+  taskType   TaskType @relation(fields: [taskTypeId], references: [id])
+
+  priority Priority @default(MEDIUM)
+
+  /// Governed field. Set and amended only by the Department Head or System
+  /// Admin, with a mandatory reason (Addendum 01 3.2b, TM-FR-076). It is also
+  /// the input to capacity in Phase 2 and to Weighted Task Units in Addendum
+  /// 02, which is exactly why the holder cannot set their own.
+  estimatedMinutes Int
+
+  status   ApprovalStatus @default(DRAFT)
+  isActive Boolean        @default(true)
+
+  // ---- recurrence ----
+  /// Null means a one-off obligation that generates no Tasks on a schedule.
+  frequency       RecurrenceFrequency?
+  /// "every N" of the frequency unit. 1 = every day/week/month.
+  interval        Int                  @default(1)
+  /// Weekly: ISO days, 1=Mon .. 7=Sun.
+  daysOfWeek      Int[]
+  /// Monthly/quarterly/yearly: day of month. 31 clamps to month end.
+  dayOfMonth      Int?
+  /// Working days before the due date at which the instance is generated.
+  leadTimeDays    Int                  @default(0)
+  startDate       DateTime?
+  endDate         DateTime?
+  /// Pause stops future generation without affecting generated instances
+  /// (TM-FR-002). Templates are paused, never deleted, while instances are open.
+  isPaused        Boolean              @default(false)
+  /// Due date of the most recent instance generated, so the scheduler is
+  /// idempotent and a restart cannot double-generate.
+  lastGeneratedFor DateTime?
+
+  /// Addendum 01 Section 6. Still nullable so existing activities remain valid,
+  /// but TM-FR-088 now enforces it at approval time in the service layer.
+  processId String?
+  process   Process? @relation(fields: [processId], references: [id])
+
+  /// The documented procedure. At most one per activity, versioned within.
+  workflow Workflow?
+
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([deskCardId])
+  @@index([taskTypeId])
+  @@index([isActive, isPaused])
+  @@map("desk_card_activities")
+}
+
+/// Where a Task came from. Section 12's four entry patterns, plus the Desk Card.
+enum TaskOrigin {
+  DESK_CARD
+  ADHOC
+  PROJECT
+  SOURCE_SYSTEM
+  MEETING
+  MANAGEMENT
+}
+
+/// The Task lifecycle (BRS Section 14), modelled as an explicit enum rather than
+/// free text. The Completed / Verified / Closed distinction is load-bearing, as
+/// are the side-states - they are not decoration.
+enum TaskStatus {
+  DRAFT
+  ASSIGNED
+  ACCEPTED
+  IN_PROGRESS
+  BLOCKED
+  PENDING_REVIEW
+  COMPLETED
+  VERIFIED
+  CLOSED
+  // side-states
+  REJECTED
+  REOPENED
+  CANCELLED
+  ON_HOLD
+  DEFERRED
+}
+
+model Task {
+  id        String @id @default(cuid())
+  /// Human-facing identifier, e.g. WP-000123. Stable and quotable in email.
+  reference String @unique
+
+  title       String
+  description String?
+
+  status   TaskStatus @default(DRAFT)
+  priority Priority   @default(MEDIUM)
+  origin   TaskOrigin @default(ADHOC)
+
+  taskTypeId String
+  taskType   TaskType @relation(fields: [taskTypeId], references: [id])
+
+  /// Present only for Tasks generated from a Desk Card. Absent is normal.
+  deskCardActivityId String?
+  deskCardActivity   DeskCardActivity? @relation(fields: [deskCardActivityId], references: [id])
+
+  /// TM-FR-083: the workflow version in force when this task was generated.
+  /// Written once at creation and never updated - an auditor must see the
+  /// procedure that actually applied, not whatever it was later revised to.
+  workflowVersionId String?
+  workflowVersion   WorkflowVersion? @relation(fields: [workflowVersionId], references: [id])
+
+  /// Section 15.2: exactly one primary Assignee at any time. Co-ownership is
+  /// modelled with subtasks or RACI, never by a second assignee here.
+  assigneeEmployeeId String
+  assignee           Employee @relation("TaskAssignee", fields: [assigneeEmployeeId], references: [id])
+
+  reviewerEmployeeId String?
+  reviewer           Employee? @relation("TaskReviewer", fields: [reviewerEmployeeId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  // Phase 4
+  projectId  String?
+  project    Project?  @relation(fields: [projectId], references: [id])
+  decisionId String?
+  decision   Decision? @relation(fields: [decisionId], references: [id])
+
+  /// Tasks this one must wait for, and tasks waiting on this one.
+  dependsOn  TaskDependency[] @relation("DependencySuccessor")
+  blocks     TaskDependency[] @relation("DependencyPredecessor")
+
+  dueDate          DateTime
+  estimatedMinutes Int?
+
+  startedAt   DateTime?
+  completedAt DateTime?
+  verifiedAt  DateTime?
+  closedAt    DateTime?
+
+  /// Section 15.8: a blocked task must record why, and who owns unblocking it.
+  blockedReason           String?
+  blockingOwnerEmployeeId String?
+
+  /// TM-FR-003: a recurring instance past its due date that was never started.
+  isMissed Boolean @default(false)
+
+  // Phase 7. TM-FR-061 asks for analytics weighted by Priority AND Complexity.
+  // Addendum 02 used estimatedMinutes alone as the effort term; complexity is
+  // the second axis - a two-hour reconciliation and a two-hour regulatory
+  // interpretation take the same time and are not the same work.
+  //
+  // Nullable and treated as MEDIUM when absent, so every task created before
+  // this field existed keeps exactly the weight it already had.
+  complexity Complexity?
+
+  // Phase 5 - generic Source System linkage (BRS 15.3). No per-system fields
+  // on Task: adding a source needs no schema change.
+  sourceSystemId  String?
+  sourceSystem    SourceSystem? @relation(fields: [sourceSystemId], references: [id])
+  /// The originating record's id. Also the idempotency key on intake, which is
+  /// what stops a redelivered webhook creating a duplicate task (TM-FR-009).
+  sourceReference String?
+
+  escalations TaskEscalation[]
+
+  // Phase 6. Confidential work is hidden from peers but never from the Audit
+  // role, and never absent from the audit trail (BRS 18.1). Marking a task
+  // confidential is itself an audited action - it cannot be used to
+  // retroactively hide history.
+  isConfidential Boolean @default(false)
+
+  flags TaskFlag[]
+  commandCentreEvents CommandCentreEvent[]
+  slaPredictions      SlaPrediction[]
+
+  checklistItems TaskChecklistItem[]
+  statusHistory  TaskStatusHistory[]
+  timeBlocks     TimeBlock[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([sourceSystemId, sourceReference])
+  @@index([assigneeEmployeeId, status])
+  @@index([deskCardActivityId])
+  @@index([status, dueDate])
+  @@index([departmentId])
+  @@index([isConfidential])
+  @@map("tasks")
+}
+
+// =============================================================================
+// PHASE 6: Confidentiality, analytics and anti-gaming
+//
+// Two rules govern everything in here, and neither is negotiable:
+//
+//   1. Confidential work is hidden from peers but NEVER from the Audit role,
+//      and never absent from the audit trail (BRS Section 18.1). Restricting
+//      visibility must not blind the compliance function - that is the whole
+//      point of an independent Audit role.
+//
+//   2. Analytics are visible to the employee they describe, at the same time
+//      and in the same form as to their manager and HR (TM-FR-059). There is
+//      no manager-only view of someone's own numbers.
+//
+// Note what is NOT here: a composite score. Addendum 02 stages that behind a
+// shadow quarter and the fairness controls below. Components ship first.
+// =============================================================================
+
+enum TaskFlagType {
+  /// TM-FR-062: closed with no checklist, comment or attachment on a type that
+  /// requires evidence.
+  CLOSED_WITHOUT_EVIDENCE
+  /// TM-FR-063: repeated reassignment of overdue work away from one person.
+  REASSIGNMENT_PATTERN
+  /// TM-FR-064: many trivial tasks in a short window, replacing substantive work.
+  ABNORMAL_TASK_SPLITTING
+  /// Priority inflation by an assigner (Addendum 02 Section 6.2).
+  PRIORITY_INFLATION
+}
+
+enum TaskFlagStatus {
+  OPEN
+  REVIEWED_ACCEPTED
+  REVIEWED_DISMISSED
+}
+
+/// A prompt for a manager to look, never an automatic penalty.
+///
+/// Flagged work is EXCLUDED from analytics until reviewed - not counted against
+/// the person. Addendum 02 Section 4.7: a flag means "somebody should check
+/// this", and treating it as guilt would make the whole control unusable.
+model TaskFlag {
+  id     String  @id @default(cuid())
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// Set for pattern flags that describe a person rather than one task.
+  subjectEmployeeId String?
+  subjectEmployee   Employee? @relation("FlagSubject", fields: [subjectEmployeeId], references: [id])
+
+  flagType TaskFlagType
+  status   TaskFlagStatus @default(OPEN)
+  detail   String
+
+  /// The period the heuristic examined, so a reviewer can reproduce it.
+  windowStart DateTime?
+  windowEnd   DateTime?
+
+  reviewedByUserId String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+
+  createdAt DateTime @default(now())
+
+  @@index([status, flagType])
+  @@index([subjectEmployeeId])
+  @@index([taskId])
+  @@map("task_flags")
+}
+
+/// A computed analytics period per employee.
+///
+/// Stored rather than recomputed on every view so that a figure shown to an
+/// employee in an appraisal conversation is the same figure their manager saw,
+/// not a live number that has since moved.
+model AnalyticsPeriod {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// Weighted Task Units - priority x effort (Addendum 02 Section 2).
+  wtuDue      Float
+  wtuClosed   Float
+  wtuOnTime   Float
+  wtuReopened Float
+  wtuFlagged  Float
+
+  /// The five components, each 0..1. Deliberately NO composite column: the
+  /// weighted score is Phase 7, behind a shadow quarter and HR sign-off.
+  execution    Float?
+  timeliness   Float?
+  quality      Float?
+  governance   Float?
+  contribution Float?
+
+  /// Below the volume floor the components are not meaningful and are reported
+  /// as "insufficient data" rather than as a low result (Addendum 02 4.1).
+  hasSufficientVolume Boolean @default(false)
+
+  computedAt DateTime @default(now())
+
+  @@unique([employeeId, periodStart, periodEnd])
+  @@index([periodStart, periodEnd])
+  @@map("analytics_periods")
+}
+
+// =============================================================================
+// PHASE 5: SLA, escalation, source-system intake, leave and exit
+//
+// The SLA clock PAUSES while a task is Blocked or On Hold (TM-FR-040). That is
+// not a nicety - it is the rule that keeps Addendum 02's Timeliness component
+// fair. Without it, whoever sits downstream of a bottleneck is penalised for
+// someone else's delay, which is precisely backwards.
+// =============================================================================
+
+/// SLA targets by Task Type x Priority x Department x Source System.
+/// Any dimension may be null, meaning "any". TM-FR-039: where several
+/// definitions match, the most specific wins - resolved in sla-core.ts.
+model SlaDefinition {
+  id   String @id @default(cuid())
+  name String
+
+  taskTypeId     String?
+  taskType       TaskType?     @relation(fields: [taskTypeId], references: [id])
+  priority       Priority?
+  departmentId   String?
+  department     Department?   @relation(fields: [departmentId], references: [id])
+  sourceSystemId String?
+  sourceSystem   SourceSystem? @relation(fields: [sourceSystemId], references: [id])
+
+  /// Minutes from assignment to first meaningful action.
+  responseMinutes   Int?
+  /// Minutes from assignment to completion, excluding paused time.
+  resolutionMinutes Int
+
+  isActive Boolean @default(true)
+
+  escalationRules EscalationRule[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([isActive])
+  @@map("sla_definitions")
+}
+
+/// A level in the escalation chain (TM-FR-041), e.g. "at 50% notify assignee,
+/// at 100% notify manager, at 150% notify department head".
+model EscalationRule {
+  id              String        @id @default(cuid())
+  slaDefinitionId String
+  slaDefinition   SlaDefinition @relation(fields: [slaDefinitionId], references: [id], onDelete: Cascade)
+
+  level Int
+  /// Percentage of the resolution SLA at which this level fires. 100 = at breach.
+  thresholdPercent Int
+
+  /// Who to notify, expressed as a relationship rather than a person, so the
+  /// chain keeps working when people change roles.
+  notifyTarget EscalationTarget
+
+  /// TM-FR-041: escalations at or above this priority cannot be muted by the
+  /// recipient. Genuine escalations must not be silenceable.
+  isMutable Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([slaDefinitionId, level])
+  @@map("escalation_rules")
+}
+
+enum EscalationTarget {
+  ASSIGNEE
+  REVIEWER
+  LINE_MANAGER
+  DEPARTMENT_HEAD
+  PROCESS_OWNER
+}
+
+/// One escalation that actually fired. Recorded so the chain is auditable and
+/// so a level never fires twice for the same task.
+model TaskEscalation {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  level            Int
+  thresholdPercent Int
+  notifyTarget     EscalationTarget
+  notifiedEmployeeId String?
+
+  /// Minutes of ACTIVE time when this fired - paused time already excluded.
+  activeMinutesAtFire Int
+
+  firedAt DateTime @default(now())
+
+  @@unique([taskId, level])
+  @@index([taskId])
+  @@map("task_escalations")
+}
+
+/// Registry of systems that can raise work (BRS 15.3). Generic by design: no
+/// per-system fields on Task, so adding a source needs no schema change.
+model SourceSystem {
+  id   String @id @default(cuid())
+  code String @unique
+  name String
+
+  /// Where a Source Reference id can be viewed, e.g.
+  /// "https://synapse.sihl.internal/tickets/{id}". {id} is substituted.
+  referenceUrlTemplate String?
+
+  /// Outbound status push-back (TM-FR-011). Only configured systems receive it.
+  webhookUrl String?
+
+  isActive Boolean @default(true)
+
+  slaDefinitions SlaDefinition[]
+  tasks          Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("source_systems")
+}
+
+/// Temporary delegation during leave (TM-FR-024).
+///
+/// Ownership reverts automatically at the end of the leave period unless the
+/// manager confirms a permanent transfer. The delegate is recorded separately
+/// from the assignee so the original owner is never overwritten.
+model Delegation {
+  id String @id @default(cuid())
+
+  fromEmployeeId String
+  fromEmployee   Employee @relation("DelegationFrom", fields: [fromEmployeeId], references: [id])
+  toEmployeeId   String
+  toEmployee     Employee @relation("DelegationTo", fields: [toEmployeeId], references: [id])
+
+  startsAt DateTime
+  endsAt   DateTime
+
+  /// Scoped by Task Type so a delegate does not inherit management or
+  /// confidential work unless explicitly extended (BRS 15.7).
+  taskTypeIds String[]
+
+  reason String
+
+  /// Set when the manager converts this into a permanent reassignment, which
+  /// stops the automatic reversion.
+  madePermanentAt DateTime?
+  revertedAt      DateTime?
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([fromEmployeeId, startsAt])
+  @@index([endsAt, revertedAt])
+  @@map("delegations")
+}
+
+enum HandoverItemType {
+  OPEN_TASK
+  DESK_CARD_HOLDER
+  RECURRING_ACTIVITY
+  RACI_ROLE
+  DACI_ROLE
+  PENDING_APPROVAL
+  PROCESS_OWNER
+  POLICY_OWNER
+  DELEGATION
+}
+
+enum HandoverStatus {
+  OPEN
+  COMPLETE
+  OVERRIDDEN
+}
+
+/// Why someone's work is being handed over. Drives the blocking rules.
+enum HandoverReason {
+  /// Leaving SIHL. Everything they hold must go to someone else.
+  EXIT
+  /// Moving to another department. They keep project roles and carry some work.
+  INTERNAL_TRANSFER
+  /// Same department, different seat. The desk card moves; little else does.
+  ROLE_CHANGE
+}
+
+enum HandoverItemDisposition {
+  /// Must be picked up by somebody else.
+  HAND_OVER
+  /// Moves with the employee. Only meaningful when they are staying.
+  RETAINED
+}
+
+/// TM-FR-025: everything an exiting employee holds, surfaced before they go.
+/// A handover of everything one person holds.
+///
+/// Originally built for exits, and broadened in Phase 7.1 because an internal
+/// move has the same failure mode and happens far more often: work quietly
+/// stays attached to someone who has stopped doing it.
+///
+/// `reason` is not cosmetic. It changes which items block completion and which
+/// move with the person - on an exit everything they hold must go, on a
+/// transfer they keep their project roles and carry some work with them.
+model Handover {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  reason HandoverReason @default(EXIT)
+
+  /// Last working day, or the day the move takes effect.
+  effectiveDate DateTime?
+
+  /// Who picks the work up. On a transfer this is the successor in the seat,
+  /// not the person's new manager.
+  replacementEmployeeId String?
+
+  /// Where they are going. Set for INTERNAL_TRANSFER; null for an exit.
+  toDepartmentId String?
+  toDepartment   Department? @relation("HandoverDestination", fields: [toDepartmentId], references: [id])
+
+  status HandoverStatus @default(OPEN)
+
+  // TM-FR-028: an internal move needs BOTH managers. The releasing manager
+  // confirms the work is genuinely handed over; the receiving one confirms they
+  // are taking the person on knowing what is coming with them. One signature
+  // is how people get transferred with their old obligations still attached.
+  releasingApprovedByUserId String?
+  releasingApprovedAt       DateTime?
+  receivingApprovedByUserId String?
+  receivingApprovedAt       DateTime?
+
+  /// A System Admin may override a hard stop, but only with a logged reason -
+  /// the override is never silent (BRS 15.7).
+  overrideReason   String?
+  overrideByUserId String?
+  overriddenAt     DateTime?
+
+  items HandoverItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Deliberately NOT unique on employeeId alone: a person may transfer several
+  // times and then eventually leave, and each of those is its own record. Only
+  // one may be OPEN at a time, which the migration enforces with a partial
+  // unique index rather than leaving it to the service to remember.
+  @@index([employeeId, status])
+  @@map("handovers")
+}
+
+model HandoverItem {
+  id          String   @id @default(cuid())
+  handoverId  String
+  handover    Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+
+  itemType    HandoverItemType
+  /// Id of the underlying task, desk card, assignment and so on.
+  entityId    String
+  description String
+
+  /// Whether this has to go to someone else, or moves with the person.
+  /// Always HAND_OVER on an exit; on a transfer the default depends on the item
+  /// type and either manager may change it before signing.
+  disposition HandoverItemDisposition @default(HAND_OVER)
+
+  /// TM-FR-025: Critical and Management items hard-stop the handover; routine
+  /// ones are a soft flag (decision F2-agreed default). A RETAINED item never
+  /// blocks - there is nothing to wait for.
+  isBlocking Boolean @default(false)
+
+  transferredToEmployeeId String?
+  transferredAt           DateTime?
+  waivedReason            String?
+
+  createdAt DateTime @default(now())
+
+  @@index([handoverId, isBlocking])
+  @@map("handover_items")
+}
+
+
+// =============================================================================
+// PHASE 4: Teams, Projects, dependencies, RACI and DACI
+//
+// Where workPulse goes beyond a desk-card product. Desk cards describe standing
+// obligations; projects are bounded bodies of cross-functional work with their
+// own accountability structure.
+//
+// Two governance sets that are never merged (BRS Appendix B):
+//   RACI governs EXECUTION - who does the work, who answers for it.
+//   DACI governs a DECISION - who drives it, whose sign-off closes it.
+// They coexist on the same project and answer different questions.
+// =============================================================================
+
+/// Membership-based grouping that deliberately spans departments (BRS 4.5).
+/// A Team sits beside Project as a container referencing Employees, rather than
+/// as a layer beneath Department - the NRI F&O team draws from six departments.
+model Team {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  ownerEmployeeId String
+  owner           Employee @relation("TeamOwner", fields: [ownerEmployeeId], references: [id])
+
+  isActive Boolean @default(true)
+
+  members  TeamMember[]
+  projects ProjectTeam[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("teams")
+}
+
+/// TM-FR-017: removing a member never deletes their historical task record -
+/// `isActive` false rather than a delete, so attribution survives.
+model TeamMember {
+  id     String @id @default(cuid())
+  teamId String
+  team   Team   @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  /// Free-text role within the team, e.g. "Compliance lead".
+  roleLabel String?
+  isActive  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  @@unique([teamId, employeeId])
+  @@index([employeeId])
+  @@map("team_members")
+}
+
+enum ProjectStatus {
+  PLANNING
+  ACTIVE
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+enum ProjectHealth {
+  GREEN
+  AMBER
+  RED
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  code        String  @unique
+  name        String
+  description String?
+
+  ownerEmployeeId          String
+  owner                    Employee  @relation("ProjectOwner", fields: [ownerEmployeeId], references: [id])
+  sponsorEmployeeId        String?
+  sponsor                  Employee? @relation("ProjectSponsor", fields: [sponsorEmployeeId], references: [id])
+  projectManagerEmployeeId String
+  projectManager           Employee  @relation("ProjectManager", fields: [projectManagerEmployeeId], references: [id])
+
+  status ProjectStatus @default(PLANNING)
+
+  startDate     DateTime?
+  targetEndDate DateTime?
+  actualEndDate DateTime?
+
+  /// TM-FR-013: computed from schedule variance, blocking risks and overdue
+  /// tasks. Recalculated rather than typed in, so a status report is
+  /// trustworthy instead of self-reported.
+  health ProjectHealth @default(GREEN)
+
+  /// A PM may override the computed value, but only with a reason, and the
+  /// override is always shown as an override - never silently replacing the
+  /// calculation it disagrees with.
+  healthOverride         ProjectHealth?
+  healthOverrideReason   String?
+  healthOverrideByUserId String?
+  healthOverrideAt       DateTime?
+  healthCalculatedAt     DateTime?
+
+  milestones Milestone[]
+  risks      ProjectRisk[]
+  raci       RaciAssignment[]
+  decisions  Decision[]
+  teams      ProjectTeam[]
+  tasks      Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("projects")
+
+  commandCentreEvents CommandCentreEvent[]
+}
+
+/// TM-FR-019: a Team can support several Projects at once.
+model ProjectTeam {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  teamId    String
+  team      Team    @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, teamId])
+  @@map("project_teams")
+}
+
+model Milestone {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  name        String
+  targetDate  DateTime
+  completedAt DateTime?
+  position    Int       @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, position])
+  @@map("milestones")
+}
+
+/// Risks and issues. TM-FR-014: a blocking one prevents project closure until
+/// resolved or explicitly waived.
+model ProjectRisk {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  title       String
+  description String?
+  isBlocking  Boolean @default(false)
+  isResolved  Boolean @default(false)
+
+  resolvedAt     DateTime?
+  resolutionNote String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, isResolved])
+  @@map("project_risks")
+}
+
+enum RaciRole {
+  RESPONSIBLE
+  ACCOUNTABLE
+  CONSULTED
+  INFORMED
+}
+
+/// TM-FR-033: exactly one Accountable per project at a time. Enforced in the
+/// service layer, because "exactly one of a particular enum value" is not a
+/// constraint a unique index can express.
+model RaciAssignment {
+  id        String  @id @default(cuid())
+  projectId String
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       RaciRole
+
+  createdAt DateTime @default(now())
+
+  @@unique([projectId, employeeId, role])
+  @@index([projectId, role])
+  @@map("raci_assignments")
+}
+
+enum DaciRole {
+  DRIVER
+  APPROVER
+  CONTRIBUTOR
+  INFORMED
+}
+
+enum DecisionStatus {
+  OPEN
+  DECIDED
+  REJECTED
+}
+
+/// A governed decision (BRS 15.10). Distinct from a Task: decisions need a
+/// Driver and an Approver, not an assignee and a reviewer.
+model Decision {
+  id        String   @id @default(cuid())
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  title       String
+  description String?
+  status      DecisionStatus @default(OPEN)
+
+  /// TM-FR-036: only the named Approver's explicit sign-off moves this to
+  /// Decided. Not the Driver, not a System Admin.
+  decidedAt       DateTime?
+  decidedByUserId String?
+  outcome         String?
+
+  assignments DaciAssignment[]
+  tasks       Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([projectId, status])
+  @@map("decisions")
+}
+
+model DaciAssignment {
+  id         String   @id @default(cuid())
+  decisionId String
+  decision   Decision @relation(fields: [decisionId], references: [id], onDelete: Cascade)
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+  role       DaciRole
+
+  createdAt DateTime @default(now())
+
+  @@unique([decisionId, employeeId, role])
+  @@index([decisionId, role])
+  @@map("daci_assignments")
+}
+
+/// Finish-to-Start only in this phase (TM-FR-029). Other dependency types and
+/// true critical-path computation are Phase 5/6 per BRS Section 15.8.
+model TaskDependency {
+  id String @id @default(cuid())
+
+  predecessorTaskId String
+  predecessor       Task   @relation("DependencyPredecessor", fields: [predecessorTaskId], references: [id], onDelete: Cascade)
+  successorTaskId   String
+  successor         Task   @relation("DependencySuccessor", fields: [successorTaskId], references: [id], onDelete: Cascade)
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  @@unique([predecessorTaskId, successorTaskId])
+  @@index([successorTaskId])
+  @@map("task_dependencies")
+}
+
+// =============================================================================
+// PHASE 3: Workflow -> Process -> Policy -> Operations Manual
+//
+// The internal-controls chain (Addendum 01, approved). It answers three
+// questions the Task model alone cannot: how is this obligation performed,
+// which control does it serve, and which policy authorises it.
+//
+// The load-bearing rule in here is workflow VERSION PINNING. A Task records
+// the workflow version in force when it was generated, immutably. Without it
+// the evidence trail is unfalsifiable: an auditor reviewing a task from two
+// years ago would see today's procedure, not the one that actually applied.
+// =============================================================================
+
+enum PolicyStatus {
+  DRAFT
+  APPROVED
+  SUPERSEDED
+  WITHDRAWN
+}
+
+/// A board- or management-approved statement of standards. Authorises
+/// Processes, which group Activities, which generate Tasks.
+model Policy {
+  id       String  @id @default(cuid())
+  code     String  @unique
+  name     String
+  category String?
+
+  ownerEmployeeId String
+  owner           Employee @relation("PolicyOwner", fields: [ownerEmployeeId], references: [id])
+
+  /// TM-FR-093: only this person's explicit sign-off approves a version. Not
+  /// the owner, not a System Admin - the named approver, mirroring the DACI
+  /// rule in BRS Section 15.10.
+  approverEmployeeId String
+  approver           Employee @relation("PolicyApprover", fields: [approverEmployeeId], references: [id])
+
+  reviewFrequencyMonths Int @default(12)
+  /// Working days before the review date at which a review task is generated.
+  reviewLeadTimeDays    Int @default(20)
+  nextReviewDate        DateTime?
+
+  status PolicyStatus @default(DRAFT)
+
+  versions  PolicyVersion[]
+  processes Process[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+  @@map("policies")
+}
+
+/// TM-FR-094: versions carry an effective date, and a future-dated version does
+/// not take effect early - the prior one remains in force until its date.
+model PolicyVersion {
+  id       String @id @default(cuid())
+  policyId String
+  policy   Policy @relation(fields: [policyId], references: [id])
+
+  versionNumber Int
+  effectiveFrom DateTime
+  /// Either a link to the controlled document, or its text. workPulse is not a
+  /// document management system (Addendum 01 Section 1.2).
+  documentUrl   String?
+  summary       String?
+
+  status           PolicyStatus @default(DRAFT)
+  approvedByUserId String?
+  approvedAt       DateTime?
+  /// Set when a later version takes over, so the chain is traceable both ways.
+  supersededAt     DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([policyId, versionNumber])
+  @@index([policyId, effectiveFrom])
+  @@map("policy_versions")
+}
+
+/// A control grouping of Desk Card Activities that together achieve a control
+/// objective. Its purpose is coverage assurance, not hierarchy - the useful
+/// output is an exception report, not a tree.
+model Process {
+  id               String  @id @default(cuid())
+  code             String  @unique
+  name             String
+  controlObjective String?
+
+  ownerEmployeeId String
+  owner           Employee @relation("ProcessOwner", fields: [ownerEmployeeId], references: [id])
+
+  /// TM-FR-087: a Process must map to exactly one Policy to be Approved.
+  policyId String?
+  policy   Policy? @relation(fields: [policyId], references: [id])
+
+  status                ApprovalStatus @default(DRAFT)
+  reviewFrequencyMonths Int            @default(12)
+
+  activities DeskCardActivity[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([policyId])
+  @@map("processes")
+}
+
+/// The documented procedure for one Desk Card Activity.
+///
+/// Belongs to exactly one Activity. Shared procedure is handled by reference
+/// between workflows rather than by attaching one workflow to many activities,
+/// which keeps version pinning unambiguous.
+model Workflow {
+  id String @id @default(cuid())
+
+  deskCardActivityId String           @unique
+  deskCardActivity   DeskCardActivity @relation(fields: [deskCardActivityId], references: [id])
+
+  reviewFrequencyMonths Int @default(12)
+
+  versions WorkflowVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("workflows")
+}
+
+model WorkflowVersion {
+  id         String   @id @default(cuid())
+  workflowId String
+  workflow   Workflow @relation(fields: [workflowId], references: [id])
+
+  versionNumber Int
+  status        ApprovalStatus @default(DRAFT)
+
+  approvedByUserId   String?
+  approvedAt         DateTime?
+  lastEditedByUserId String?
+
+  /// TM-FR-084: past this date the version is Stale. It REMAINS IN FORCE -
+  /// stale means "nobody has confirmed this is still correct", not "invalid".
+  /// Withdrawing it would leave performers with no procedure at all.
+  reviewDueAt  DateTime?
+  supersededAt DateTime?
+
+  steps WorkflowStep[]
+  /// Tasks pinned to this version. Immutable once set.
+  tasks Task[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workflowId, versionNumber])
+  @@index([status])
+  @@map("workflow_versions")
+}
+
+model WorkflowStep {
+  id                String          @id @default(cuid())
+  workflowVersionId String
+  workflowVersion   WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
+
+  position Int
+  title    String
+  /// Structured rich text (TipTap JSON), not HTML, so steps stay queryable and
+  /// diffable between versions rather than being an opaque blob.
+  contentJson     Json?
+  /// Screenshot or attachment references for this step.
+  attachmentUrls  String[]
+  expectedMinutes Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([workflowVersionId, position])
+  @@map("workflow_steps")
+}
+
+enum ManualScope {
+  DEPARTMENT
+  PROCESS
+  POLICY
+}
+
+/// A generated, immutable snapshot. Never authored, never edited after
+/// generation (TM-FR-099) - its authority comes from being a faithful
+/// projection of the live model at a point in time.
+model OperationsManual {
+  id         String      @id @default(cuid())
+  scopeType  ManualScope
+  scopeId    String
+  scopeLabel String
+
+  generatedByUserId String?
+  generatedAt       DateTime @default(now())
+
+  /// TM-FR-100: the manual states its own quality. A well-formatted document
+  /// describing procedures nobody follows is worse than none, so a reader can
+  /// see immediately how far to trust it.
+  activitiesInScope Int
+  activitiesCovered Int
+  staleWorkflows    Int
+  coveragePercent   Int
+
+  /// Whether content was withheld because the generating user could not see it.
+  /// Disclosed on the manual rather than omitted silently (TM-FR-102).
+  wasScopeLimited Boolean @default(false)
+
+  /// The snapshot itself, including the version ids of every policy and
+  /// workflow included, so the document can be reconstructed exactly.
+  contentJson Json
+
+  @@index([scopeType, scopeId])
+  @@index([generatedAt])
+  @@map("operations_manuals")
+}
+
+// =============================================================================
+// PHASE 2: Calendar time-blocking and capacity
+//
+// The competitive review's clearest borrowed idea: capacity expressed as real
+// minutes on a real calendar, not an abstract weekly number nobody fills in.
+// Every block is anchored to an Activity's governed `estimatedMinutes`, which
+// is why that field is Department-Head-owned - see Addendum 01 3.2b.
+// =============================================================================
+
+/// Time an employee has set aside, normally for a specific Task.
+///
+/// Blocks do not change a Task's state and are not a commitment the system
+/// enforces - they are the employee's own plan for their day. Their value is
+/// that capacity becomes observed rather than self-reported.
+model TimeBlock {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation("TimeBlockOwner", fields: [employeeId], references: [id])
+
+  /// Null for time blocked that is not task work - leave, meetings, focus time.
+  taskId String?
+  task   Task?   @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  /// Required when there is no task to take a title from.
+  title String?
+
+  startAt DateTime
+  endAt   DateTime
+
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([employeeId, startAt])
+  @@index([taskId])
+  @@map("time_blocks")
+}
+
+/// TM-FR-052: capacity as a configurable weekly effort budget per employee.
+///
+/// Over-allocation is a visual flag, never an automatic block on assignment.
+/// A manager seeing someone is over capacity and deciding anyway is a judgement
+/// the system should inform, not override.
+model CapacityBudget {
+  id String @id @default(cuid())
+
+  employeeId String   @unique
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  /// Default 2400 = 40 hours. Stored in minutes so it shares units with
+  /// DeskCardActivity.estimatedMinutes and needs no conversion at comparison.
+  weeklyMinutes Int @default(2400)
+
+  updatedByUserId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("capacity_budgets")
+}
+
+/// TM-FR-006: a Task cannot move to Completed until every item is checked or
+/// explicitly waived with a reason.
+model TaskChecklistItem {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  label    String
+  position Int    @default(0)
+
+  isDone            Boolean   @default(false)
+  completedAt       DateTime?
+  completedByUserId String?
+
+  /// A waiver is an alternative to completion, and needs a reason on the record.
+  waivedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([taskId])
+  @@map("task_checklist_items")
+}
+
+/// Every lifecycle transition, with actor, timestamp and - where the business
+/// rules demand it - a reason. TM-FR-065's "no transition without an actor and
+/// a timestamp" is enforced by this table's shape, not by convention.
+model TaskStatusHistory {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  fromStatus TaskStatus?
+  toStatus   TaskStatus
+
+  actorUserId String?
+  actorType   ActorType @default(USER)
+  reason      String?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@map("task_status_history")
+}
+
+
+// ===========================================================================
+// Phase 7 - CEO Command Centre, HR appraisal evidence, SLA-breach prediction
+// ===========================================================================
+
+/// TM-FR-061. Set at creation alongside Priority. Absent means MEDIUM: a task
+/// nobody classified must not be scored as trivial.
+enum Complexity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum CommandCentreEventType {
+  SLA_BREACH
+  ESCALATION_TOP_LEVEL
+  CRITICAL_OVERDUE
+  RECURRING_COMPLIANCE_MISSED
+  BLOCKED_BEYOND_THRESHOLD
+  PROJECT_HEALTH_DEGRADED
+}
+
+enum CommandCentreSeverity {
+  INFO
+  ATTENTION
+  URGENT
+}
+
+/// TM-FR-058: the structured feed of enterprise status for the CEO Command
+/// Centre.
+///
+/// An event stream rather than a rolling dashboard query, because the Command
+/// Centre is a separate consumer on its own cadence: it must be able to ask
+/// "what changed since I last looked" without re-deriving the enterprise from
+/// scratch, and without WMP knowing anything about how it renders.
+///
+/// Confidential tasks never produce an event. The exclusion is at the point of
+/// generation, not at the point of read, so a consumer holding an integration
+/// token cannot widen it.
+model CommandCentreEvent {
+  id String @id @default(cuid())
+
+  eventType CommandCentreEventType
+  severity  CommandCentreSeverity  @default(ATTENTION)
+
+  /// Free-form for the consumer to render. WMP states the fact; the Command
+  /// Centre decides how loudly to say it.
+  headline String
+  detail   String?
+
+  taskId       String?
+  task         Task?       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  projectId    String?
+  project      Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  employeeId   String?
+  employee     Employee?   @relation("CommandCentreSubject", fields: [employeeId], references: [id])
+
+  /// Monotonic per-stream position. The consumer passes the last value it saw
+  /// back as a cursor; nothing is delivered twice and nothing is skipped.
+  sequence BigInt @unique @default(autoincrement())
+
+  /// Set once the condition that raised the event no longer holds, so a
+  /// consumer can show an open list without asking WMP to interpret for it.
+  resolvedAt DateTime?
+
+  /// Dedupe key: one open event per (type, subject). Re-detecting the same
+  /// breach must not produce a second event.
+  dedupeKey String
+
+  occurredAt DateTime @default(now())
+
+  @@unique([dedupeKey, resolvedAt])
+  @@index([sequence])
+  @@index([eventType, resolvedAt])
+  @@map("command_centre_events")
+}
+
+/// TM-FR-060: Operational Task Analytics exposed to HR as EVIDENCE, not a score.
+///
+/// The acceptance criterion is literal - "when HR views WMP evidence, then no
+/// single numeric 'score' field exists" - so this table has five component
+/// columns and deliberately no sixth column combining them.
+///
+/// A snapshot rather than a live query because an appraisal conversation must
+/// reference a fixed artifact. A figure that moves between HR reading it and the
+/// employee being shown it is not evidence, it is an argument.
+model AppraisalEvidence {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  /// HR's cycle label, e.g. "FY27-H1". Opaque to WMP.
+  cycleLabel  String
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// The components, copied at snapshot time. Null where the volume floor was
+  /// not met - which is reported as insufficient data, never as zero.
+  execution    Float?
+  timeliness   Float?
+  quality      Float?
+  governance   Float?
+  contribution Float?
+
+  hasSufficientVolume Boolean @default(false)
+
+  /// Raw evidence behind the components, so a manager can interrogate rather
+  /// than accept.
+  wtuDue      Float
+  wtuClosed   Float
+  wtuOnTime   Float
+  wtuReopened Float
+
+  /// Flags that were still open when the snapshot was taken. HR must see that
+  /// work was excluded, not silently receive a smaller denominator.
+  openFlagCount      Int @default(0)
+  excludedTaskCount  Int @default(0)
+
+  /// Who generated it and when. Pulling a person's performance evidence is
+  /// itself an auditable act.
+  generatedByUserId String?
+  generatedAt       DateTime @default(now())
+
+  /// Set when the subject has been shown it. TM-FR-059: analytics are never
+  /// hidden from the employee they describe, and this records that they were
+  /// not.
+  disclosedToSubjectAt DateTime?
+
+  @@unique([employeeId, cycleLabel])
+  @@index([cycleLabel])
+  @@map("appraisal_evidence")
+}
+
+/// Addendum 02's weighted composite, computed WITHOUT being in force.
+///
+/// The shadow quarter exists to answer "would this score have said anything
+/// true?" before anyone's appraisal depends on it. That question cannot be
+/// answered without computing the number, and the number must not escape while
+/// it is being answered - so it lives here, readable only by AUDIT and the
+/// named HR reviewer, and never joined into AppraisalEvidence.
+///
+/// isInForce has no true branch anywhere in the codebase. Turning the score on
+/// is a deliberate change to this schema and that router, not a flag flip.
+model ShadowScore {
+  id String @id @default(cuid())
+
+  employeeId String
+  employee   Employee @relation(fields: [employeeId], references: [id])
+
+  periodStart DateTime
+  periodEnd   DateTime
+
+  /// The weights actually used, stored per row. A shadow quarter re-run under
+  /// different weights must not silently overwrite what the last one said.
+  weightsJson Json
+
+  composite Float
+
+  /// Always false. Present so that any read path must acknowledge it.
+  isInForce Boolean @default(false)
+
+  computedAt DateTime @default(now())
+
+  @@unique([employeeId, periodStart, periodEnd])
+  @@index([periodStart, periodEnd])
+  @@map("shadow_scores")
+}
+
+/// SLA-breach prediction (Appendix F: the first AI capability, chosen for
+/// "clearest operational payoff, lowest governance risk").
+///
+/// Stored rather than computed on demand for one reason: a prediction nobody
+/// scores is not a model, it is a decoration. Recording what was predicted and
+/// later what actually happened is what makes the thing measurable - and what
+/// will let SIHL retire it honestly if it turns out to add nothing.
+model SlaPrediction {
+  id String @id @default(cuid())
+
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  /// 0..1. Deliberately not called "confidence" - it is a risk estimate from an
+  /// explainable rule set, not a probability from a fitted model.
+  risk Float
+
+  /// The contributing factors, each with its own contribution, so a supervisor
+  /// is told WHY. An unexplained "this will breach" is unusable in BFSI.
+  factorsJson Json
+
+  predictedAt DateTime @default(now())
+
+  /// Backfilled once the task settles. Null means not yet known.
+  actuallyBreached Boolean?
+  outcomeAt        DateTime?
+
+  @@index([taskId, predictedAt])
+  @@index([actuallyBreached])
+  @@map("sla_predictions")
+}

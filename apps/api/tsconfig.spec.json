@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Jest runs CommonJS, but some runtime dependencies (superjson, jose) ship
+    // ESM only. Node 24 loads them fine via require(esm) - this is purely so
+    // ts-jest can transpile them down for the test runner. See
+    // transformIgnorePatterns in jest.config.js / test/jest-e2e.json.
+    "allowJs": true
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "moduleFileExtensions": [
+    "js",
+    "json",
+    "ts"
+  ],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "setupFiles": [
+    "<rootDir>/../jest.setup.js"
+  ],
+  "transform": {
+    "^.+\\.(t|j)s$": [
+      "ts-jest",
+      {
+        "tsconfig": "<rootDir>/../tsconfig.spec.json"
+      }
+    ]
+  },
+  "transformIgnorePatterns": [
+    "node_modules/(?!(superjson|copy-anything|is-what|jose)/)"
+  ],
+  "testTimeout": 30000,
+  "maxWorkers": 2,
+  "workerIdleMemoryLimit": "1GB"
+}

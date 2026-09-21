@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>*{box-sizing:border-box}body{margin:0}img{max-width:100%}</style>
+</head>
+<body>
+<title>workPulse Phase 7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Public+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* ---------------------------------------------------------------------
+     Tokens. Complete light palette on bare :root; dark redefines tokens only.
+     Neutrals carry a slight blue bias toward the slate accent, so the greys
+     read as chosen rather than inherited.
+     --------------------------------------------------------------------- */
+  :root {
+    --paper:        #fcfcfb;
+    --surface:      #ffffff;
+    --surface-sunk: #f3f4f2;
+    --rule:         #ddddd8;
+    --rule-strong:  #c4c5be;
+
+    --text:         #1a1e22;
+    --text-soft:    #565d64;
+    --text-faint:   #7d848a;
+
+    --accent:       #2f4858;
+    --accent-soft:  #e6ecef;
+    --accent-text:  #24384a;
+
+    --good:         #2c6349;
+    --good-soft:    #e4efe8;
+    --warn:         #8a5a0c;
+    --warn-soft:    #f7efdf;
+    --stop:         #8b2f3b;
+    --stop-soft:    #f7e6e7;
+
+    --shadow: 0 1px 2px rgba(26, 30, 34, .05), 0 8px 24px -16px rgba(26, 30, 34, .28);
+
+    --measure: 66ch;
+    --rail: 8.5rem;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:        #14171a;
+      --surface:      #1b1f23;
+      --surface-sunk: #202428;
+      --rule:         #2e343a;
+      --rule-strong:  #414951;
+
+      --text:         #e8e9e7;
+      --text-soft:    #a6adb4;
+      --text-faint:   #838b92;
+
+      --accent:       #9dbdd2;
+      --accent-soft:  #22303a;
+      --accent-text:  #b6d2e4;
+
+      --good:         #7cc0a0;
+      --good-soft:    #1d2c25;
+      --warn:         #ddac5c;
+      --warn-soft:    #2e2618;
+      --stop:         #e08b96;
+      --stop-soft:    #322023;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -16px rgba(0, 0, 0, .6);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:        #14171a;
+    --surface:      #1b1f23;
+    --surface-sunk: #202428;
+    --rule:         #2e343a;
+    --rule-strong:  #414951;
+
+    --text:         #e8e9e7;
+    --text-soft:    #a6adb4;
+    --text-faint:   #838b92;
+
+    --accent:       #9dbdd2;
+    --accent-soft:  #22303a;
+    --accent-text:  #b6d2e4;
+
+    --good:         #7cc0a0;
+    --good-soft:    #1d2c25;
+    --warn:         #ddac5c;
+    --warn-soft:    #2e2618;
+    --stop:         #e08b96;
+    --stop-soft:    #322023;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 24px -16px rgba(0, 0, 0, .6);
+  }
+
+  /* --------------------------------------------------------------------- */
+
+  body {
+    background: var(--paper);
+    color: var(--text);
+    font-family: "Public Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .page {
+    max-width: calc(var(--measure) + var(--rail) + 6rem);
+    margin: 0 auto;
+    padding: 3rem 1.5rem 6rem;
+  }
+
+  /* Margin rail: requirement codes hang outside the reading column, the way a
+     spec annotates its own clauses. Collapses inline on narrow screens. */
+  .block {
+    display: grid;
+    grid-template-columns: var(--rail) minmax(0, 1fr);
+    gap: 0 2rem;
+    align-items: start;
+  }
+  .rail {
+    font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: .6875rem;
+    line-height: 1.5;
+    letter-spacing: .04em;
+    color: var(--text-faint);
+    text-align: right;
+    padding-top: .55rem;
+    display: flex;
+    flex-direction: column;
+    gap: .15rem;
+    align-items: flex-end;
+  }
+  .rail .code { color: var(--accent-text); font-weight: 500; }
+  .body { min-width: 0; display: flex; flex-direction: column; gap: 1.15rem; }
+
+  @media (max-width: 780px) {
+    .block { grid-template-columns: minmax(0, 1fr); gap: .5rem; }
+    .rail { text-align: left; align-items: flex-start; flex-direction: row; flex-wrap: wrap; gap: .5rem; padding-top: 0; }
+  }
+
+  /* --- Masthead --------------------------------------------------------- */
+
+  .masthead { display: flex; flex-direction: column; gap: 1rem; margin-bottom: 2.5rem; }
+  .kicker {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .6875rem;
+    letter-spacing: .14em;
+    text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  h1 {
+    font-family: "Newsreader", Georgia, "Times New Roman", serif;
+    font-size: clamp(2.1rem, 5vw, 3.1rem);
+    font-weight: 500;
+    line-height: 1.08;
+    letter-spacing: -.015em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  .standfirst {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 1.185rem;
+    line-height: 1.55;
+    color: var(--text-soft);
+    max-width: 54ch;
+    margin: 0;
+  }
+  .masthead-meta {
+    display: flex; flex-wrap: wrap; gap: .5rem .75rem; align-items: center;
+    padding-top: .35rem;
+  }
+
+  /* --- Shipped strip ---------------------------------------------------- */
+
+  .shipped {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr));
+    border-top: 1px solid var(--rule-strong);
+    border-bottom: 1px solid var(--rule-strong);
+    margin: 2.5rem 0 3rem;
+  }
+  .shipped > div {
+    padding: 1.1rem 1.25rem 1.2rem;
+    border-left: 1px solid var(--rule);
+    display: flex; flex-direction: column; gap: .3rem;
+  }
+  .shipped > div:first-child { border-left: 0; padding-left: 0; }
+  @media (max-width: 620px) {
+    .shipped > div { border-left: 0; border-top: 1px solid var(--rule); padding-left: 0; }
+    .shipped > div:first-child { border-top: 0; }
+  }
+  .shipped dt {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .625rem; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--text-faint);
+  }
+  .shipped dd {
+    margin: 0;
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 1.0625rem; line-height: 1.35; color: var(--text);
+  }
+  .shipped .note { font-family: inherit; font-size: .8125rem; color: var(--text-soft); line-height: 1.45; }
+
+  /* --- Sections --------------------------------------------------------- */
+
+  section { margin-bottom: 3.5rem; }
+  h2 {
+    font-family: "Newsreader", Georgia, serif;
+    font-size: 1.75rem; font-weight: 500; line-height: 1.2;
+    letter-spacing: -.01em; margin: 0 0 .15rem; text-wrap: balance;
+  }
+  h3 {
+    font-size: .8125rem; font-weight: 600;
+    letter-spacing: .07em; text-transform: uppercase;
+    color: var(--accent-text);
+    margin: 1rem 0 0;
+  }
+  p { margin: 0; max-width: var(--measure); }
+  .lede { font-size: 1.05rem; color: var(--text-soft); max-width: 58ch; }
+  em { font-style: italic; }
+  strong { font-weight: 600; }
+  code {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .85em;
+    background: var(--surface-sunk);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: .08em .34em;
+    white-space: nowrap;
+  }
+
+  blockquote {
+    margin: .35rem 0;
+    padding: .1rem 0 .1rem 1.1rem;
+    border-left: 2px solid var(--accent);
+    font-family: "Newsreader", Georgia, serif;
+    font-style: italic;
+    font-size: 1.0625rem;
+    color: var(--text-soft);
+    max-width: 58ch;
+  }
+  blockquote cite {
+    display: block;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-style: normal; font-size: .6875rem; letter-spacing: .05em;
+    color: var(--text-faint);
+    margin-top: .45rem;
+  }
+
+  /* --- Pills ------------------------------------------------------------ */
+
+  .pill {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .625rem; font-weight: 500;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: .22rem .5rem; border-radius: 2px;
+    border: 1px solid var(--rule-strong);
+    background: var(--surface-sunk);
+    color: var(--text-soft);
+    white-space: nowrap;
+  }
+  .pill.good { border-color: color-mix(in srgb, var(--good) 40%, transparent); background: var(--good-soft); color: var(--good); }
+  .pill.warn { border-color: color-mix(in srgb, var(--warn) 40%, transparent); background: var(--warn-soft); color: var(--warn); }
+  .pill.stop { border-color: color-mix(in srgb, var(--stop) 40%, transparent); background: var(--stop-soft); color: var(--stop); }
+
+  /* --- Tables ----------------------------------------------------------- */
+
+  .scroll { overflow-x: auto; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); }
+  table { width: 100%; border-collapse: collapse; font-size: .875rem; font-variant-numeric: tabular-nums; }
+  thead th {
+    text-align: left; font-weight: 600;
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .625rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--text-faint);
+    padding: .7rem .9rem;
+    border-bottom: 1px solid var(--rule-strong);
+    background: var(--surface-sunk);
+    white-space: nowrap;
+  }
+  tbody td { padding: .7rem .9rem; border-bottom: 1px solid var(--rule); vertical-align: top; line-height: 1.5; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td .why { color: var(--text-soft); }
+
+  /* --- Conditions list: threshold is data, so it gets its own column ----- */
+
+  .conditions { display: flex; flex-direction: column; border: 1px solid var(--rule); border-radius: 4px; background: var(--surface); overflow: hidden; }
+  .condition {
+    display: grid;
+    grid-template-columns: 15rem 8.5rem minmax(0, 1fr);
+    gap: 0 1.25rem;
+    padding: .85rem 1rem;
+    border-bottom: 1px solid var(--rule);
+    align-items: baseline;
+  }
+  .condition:last-child { border-bottom: 0; }
+  .condition .name {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .75rem; font-weight: 500; color: var(--accent-text);
+    letter-spacing: .01em;
+  }
+  .condition .threshold { font-size: .8125rem; color: var(--text); font-weight: 500; }
+  .condition .why { font-size: .8125rem; color: var(--text-soft); line-height: 1.5; }
+  @media (max-width: 760px) {
+    .condition { grid-template-columns: minmax(0, 1fr); gap: .25rem; }
+    .condition .threshold { font-size: .75rem; color: var(--text-soft); }
+  }
+
+  /* --- Access matrix: the centrepiece ----------------------------------- */
+
+  .matrix { display: flex; flex-direction: column; gap: 1px; background: var(--rule); border: 1px solid var(--rule); border-radius: 4px; overflow: hidden; }
+  .access {
+    display: grid;
+    grid-template-columns: 13.5rem 6.5rem minmax(0, 1fr);
+    gap: 0 1.25rem;
+    align-items: baseline;
+    padding: .8rem 1rem;
+    background: var(--surface);
+  }
+  .access.allowed { background: var(--good-soft); }
+  .access .role {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .75rem; font-weight: 500; color: var(--text);
+  }
+  .access .why { font-size: .8125rem; color: var(--text-soft); line-height: 1.5; }
+  @media (max-width: 760px) {
+    .access { grid-template-columns: minmax(0, 1fr); gap: .3rem; }
+  }
+
+  /* --- Constraint list: a real enumerated set --------------------------- */
+
+  ol.constraints { margin: 0; padding: 0; list-style: none; counter-reset: c; display: flex; flex-direction: column; gap: .7rem; max-width: var(--measure); }
+  ol.constraints li {
+    counter-increment: c;
+    display: grid; grid-template-columns: 1.65rem minmax(0, 1fr); gap: .75rem;
+    align-items: baseline;
+  }
+  ol.constraints li::before {
+    content: counter(c);
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .6875rem; font-weight: 600;
+    color: var(--accent-text);
+    border: 1px solid var(--rule-strong);
+    border-radius: 2px;
+    text-align: center;
+    padding: .1rem 0;
+    background: var(--surface);
+  }
+  ol.constraints li p { margin: 0; font-size: .9375rem; }
+
+  ul.plain { margin: 0; padding-left: 1.15rem; max-width: var(--measure); display: flex; flex-direction: column; gap: .4rem; }
+  ul.plain li { font-size: .9375rem; }
+
+  /* --- Callouts --------------------------------------------------------- */
+
+  .callout {
+    border: 1px solid var(--rule-strong);
+    border-left: 3px solid var(--accent);
+    border-radius: 3px;
+    background: var(--surface);
+    padding: 1rem 1.15rem;
+    display: flex; flex-direction: column; gap: .5rem;
+    box-shadow: var(--shadow);
+  }
+  .callout.stop { border-left-color: var(--stop); }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout .head {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .6875rem; font-weight: 600; letter-spacing: .09em; text-transform: uppercase;
+    color: var(--text-soft);
+  }
+  .callout.stop .head { color: var(--stop); }
+  .callout.warn .head { color: var(--warn); }
+  .callout p { font-size: .9375rem; }
+  .callout .roles {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+    font-size: .75rem; line-height: 1.9; color: var(--stop);
+    display: flex; flex-wrap: wrap; gap: .4rem .9rem;
+  }
+
+  hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 0; }
+
+  footer {
+    margin-top: 4rem; padding-top: 1.5rem;
+    border-top: 1px solid var(--rule-strong);
+    font-size: .8125rem; color: var(--text-faint);
+    display: flex; flex-direction: column; gap: .4rem;
+  }
+
+  a { color: var(--accent-text); text-underline-offset: 2px; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 2px; }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="kicker">SIHL workPulse · Work Management Platform</div>
+    <h1>Phase 7 — what ships, and what is deliberately withheld</h1>
+    <p class="standfirst">The CEO Command Centre feed, HR appraisal evidence, SLA-breach prediction, and a weighted performance score that exists in code and reaches nobody.</p>
+    <div class="masthead-meta">
+      <span class="pill good">Built</span>
+      <span class="pill">237 unit · 139 e2e passing</span>
+      <span class="pill">11 September 2026</span>
+      <span class="pill warn">1 open conflict</span>
+    </div>
+  </header>
+
+  <dl class="shipped">
+    <div>
+      <dt>§1 · TM-FR-058</dt>
+      <dd>CEO Command Centre</dd>
+      <div class="note">A cursor-paged event feed that stays quiet. Six conditions, each with a threshold.</div>
+    </div>
+    <div>
+      <dt>§2 · TM-FR-059/060</dt>
+      <dd>Appraisal evidence</dd>
+      <div class="note">Fixed snapshots for HR. No score field, taken literally.</div>
+    </div>
+    <div>
+      <dt>§3 · Appendix F</dt>
+      <dd>SLA-breach risk</dd>
+      <div class="note">Explainable, and scored against what actually happened.</div>
+    </div>
+    <div>
+      <dt>§4 · Addendum 02</dt>
+      <dd>Shadow quarter</dd>
+      <div class="note">The composite score, computed and contained. Not in force.</div>
+    </div>
+  </dl>
+
+  <!-- ================= §1 ================= -->
+  <section class="block">
+    <div class="rail">
+      <span class="code">TM-FR-058</span>
+      <span>§1</span>
+    </div>
+    <div class="body">
+      <h2>The CEO Command Centre feed</h2>
+      <blockquote>
+        System shall expose a structured API/event feed of enterprise status for the future CEO Command Centre. The feed excludes Confidential task content by default.
+        <cite>BRS Appendix A</cite>
+      </blockquote>
+
+      <p class="lede">An event stream, not a dashboard query. The Command Centre is a separate consumer on its own cadence: it must be able to ask <em>what changed since I last looked</em> without re-deriving the enterprise from scratch, and without workPulse knowing anything about how it renders.</p>
+
+      <p>The integration surface is REST rather than tRPC on purpose. tRPC's value is end-to-end types for <em>our</em> web client; this endpoint exists for a consumer built by someone else, on a stack we do not control, possibly years from now.</p>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Surface</th><th>Consumer</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><code>GET /command-centre/events?since=&lt;cursor&gt;</code></td>
+              <td class="why">External Command Centre, via <code>INTEGRATION_SERVICE</code></td>
+            </tr>
+            <tr>
+              <td><code>GET /command-centre/pulse</code></td>
+              <td class="why">Same — headline figures with direction of travel</td>
+            </tr>
+            <tr>
+              <td><code>commandCentre.*</code> (tRPC)</td>
+              <td class="why">workPulse's own <code>/command-centre</code> screen</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <h3>The six conditions that reach a CEO</h3>
+      <p>The governing principle is that this feed must <strong>stay quiet</strong>. A feed that fires on every overdue task is read once and then ignored — which is worse than not having one, because it converts a real escalation into noise the reader has been trained to skip.</p>
+
+      <div class="conditions">
+        <div class="condition">
+          <span class="name">SLA_BREACH</span>
+          <span class="threshold">Critical &amp; Urgent only</span>
+          <span class="why">A breached Low-priority task is a real fact and a line-manager matter. It belongs in MIS, not in front of the CEO.</span>
+        </div>
+        <div class="condition">
+          <span class="name">ESCALATION_TOP_LEVEL</span>
+          <span class="threshold">Chain exhausted</span>
+          <span class="why">Intermediate levels are the chain <em>working</em>. The top level is the chain having failed to resolve it — the only part that is genuinely executive.</span>
+        </div>
+        <div class="condition">
+          <span class="name">CRITICAL_OVERDUE</span>
+          <span class="threshold">24h past due</span>
+          <span class="why">Below this, the escalation chain has not finished trying.</span>
+        </div>
+        <div class="condition">
+          <span class="name">BLOCKED_BEYOND_THRESHOLD</span>
+          <span class="threshold">72h blocked</span>
+          <span class="why">Names the <strong>blocking owner</strong>, not the assignee. Blocked work is the one case where the person holding the task usually cannot act, and naming them would point the CEO at the wrong desk.</span>
+        </div>
+        <div class="condition">
+          <span class="name">RECURRING_COMPLIANCE_MISSED</span>
+          <span class="threshold">Always urgent</span>
+          <span class="why">For a BFSI entity approaching listing, a missed filing is not a productivity metric.</span>
+        </div>
+        <div class="condition">
+          <span class="name">PROJECT_HEALTH_DEGRADED</span>
+          <span class="threshold">On the transition</span>
+          <span class="why">A project amber for a month is a known problem being managed. One that turned amber this morning is news.</span>
+        </div>
+      </div>
+
+      <p>Every threshold is an exported constant, so SIHL can calibrate them against real volume rather than argue about them in the abstract.</p>
+
+      <h3>Two properties enforced in code</h3>
+      <ol class="constraints">
+        <li><p><strong>Confidentiality is applied at generation, not at read.</strong> Every detection query carries <code>isConfidential: false</code>. A consumer holding an integration token has no parameter that widens it, because the excluded rows were never written.</p></li>
+        <li><p><strong>The cursor cannot skip.</strong> <code>sequence</code> is a 64-bit value serialised as a <em>string</em>. As a JSON number it would silently lose precision past 2<sup>53</sup>, and a cursor that quietly skips events is the one failure mode a feed must not have.</p></li>
+      </ol>
+
+      <p>Events resolve as well as raise. A feed that could only ever accumulate would be unreadable by week three.</p>
+    </div>
+  </section>
+
+  <!-- ================= §2 ================= -->
+  <section class="block">
+    <div class="rail">
+      <span class="code">TM-FR-059</span>
+      <span class="code">TM-FR-060</span>
+      <span>§2</span>
+    </div>
+    <div class="body">
+      <h2>HR appraisal evidence</h2>
+      <blockquote>
+        Given an appraisal cycle opens, when HR views WMP evidence, then no single numeric 'score' field exists.
+        <cite>BRS Appendix A — TM-FR-060 acceptance criterion</cite>
+      </blockquote>
+
+      <p class="lede">That criterion is taken literally, in three places:</p>
+
+      <ul class="plain">
+        <li><code>AppraisalEvidence</code> has five component columns and no sixth combining them.</li>
+        <li>The read path returns an explicit <code>compositeScore: null</code> plus a written explanation, so absence cannot be mistaken for an oversight.</li>
+        <li>A test asserts that no numeric key named <code>score</code>, <code>composite</code> or <code>overall</code> appears anywhere in the payload.</li>
+      </ul>
+
+      <h3>Why a snapshot, not a live query</h3>
+      <p>An appraisal conversation must reference a <strong>fixed artifact</strong>. A figure that moves between HR reading it and the employee being shown it is not evidence — it is an argument. Generation is idempotent per employee and cycle, so there is exactly one artifact and no ambiguity about which one the conversation used.</p>
+
+      <h3>The asymmetry the BRS asks for</h3>
+      <blockquote>
+        Data flows upward freely for visibility, but only flows into the formal appraisal process through a governed, human-reviewed step.
+        <cite>BRS §4.6 — Task → KPI → MIS → Command Centre → Appraisal</cite>
+      </blockquote>
+
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Control</th><th>How it is implemented</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Generation is restricted</td>
+              <td class="why">HR, Audit or an executive. A line manager is deliberately refused — they read the same figures through the report card, which is symmetric with what the subject sees.</td>
+            </tr>
+            <tr>
+              <td>Generation is audited</td>
+              <td class="why">Naming who pulled whose record, and when.</td>
+            </tr>
+            <tr>
+              <td>Disclosure is recorded</td>
+              <td class="why"><code>disclosedToSubjectAt</code> is set the moment the subject reads their own. TM-FR-059 stops being a promise and becomes a fact somebody can check — the HR screen shows how many subjects have not yet seen theirs.</td>
+            </tr>
+            <tr>
+              <td>Exclusions are disclosed</td>
+              <td class="why">Work removed by an open flag is reported on the snapshot rather than silently shrinking the denominator.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= §3 ================= -->
+  <section class="block">
+    <div class="rail">
+      <span class="code">Appendix F</span>
+      <span>§3</span>
+    </div>
+    <div class="body">
+      <h2>SLA-breach prediction</h2>
+      <blockquote>
+        SLA-breach prediction — clearest operational payoff, lowest governance risk.
+        <cite>BRS Appendix F — recommended first AI capability</cite>
+      </blockquote>
+
+      <p class="lede">What was built is an <strong>explainable additive model</strong>, not a fitted one. The naming says so throughout: <code>risk</code>, never <code>confidence</code> or <code>probability</code>.</p>
+
+      <ol class="constraints">
+        <li><p><strong>There is no training data yet.</strong> A model fitted on an empty history would be a confident-looking random number.</p></li>
+        <li><p><strong>A supervisor cannot act on “0.82”.</strong> They can act on <em>“not started, 70% of the window gone, and this task type breaches a third of the time”</em>. Every factor carries its own contribution, and the screen shows the top four.</p></li>
+        <li><p><strong>It is measurable.</strong> Every prediction is recorded against what actually happened when the task settled.</p></li>
+      </ol>
+
+      <h3>Honesty about accuracy</h3>
+      <p>Accuracy is reported as <strong>skill against the base rate</strong>, not raw accuracy. If 5% of tasks breach, then “nothing will ever breach” is 95% accurate and completely useless. The screen shows the model's own track record <em>above</em> its predictions, and when skill falls to zero or below it says so in plain words:</p>
+
+      <blockquote>
+        On this record the model is not adding information beyond how often work breaches anyway. Weigh it accordingly, and raise it — a model that earns nothing should be recalibrated or retired, not quietly tolerated.
+        <cite>Shown on /at-risk when skill ≤ 0</cite>
+      </blockquote>
+
+      <h3>What is not assessed</h3>
+      <p>Settled work, paused work — a paused clock cannot breach while it is paused — and anything with no SLA attached. Predicting breach for something already closed is noise a supervisor has to learn to ignore, which is how a useful signal becomes a dismissed one.</p>
+    </div>
+  </section>
+
+  <!-- ================= §4 ================= -->
+  <section class="block">
+    <div class="rail">
+      <span class="code">Addendum 02</span>
+      <span class="code">F3-01..06</span>
+      <span>§4</span>
+    </div>
+    <div class="body">
+      <h2>The shadow quarter</h2>
+
+      <div class="callout stop">
+        <div class="head">Status</div>
+        <p><strong>The weighted composite score now exists in code. It is not in force, and it reaches no surface a manager, HR or an employee can read.</strong></p>
+      </div>
+
+      <p class="lede">This is not a reversal of the Phase 6 rule that the analytics core has no composite function. That rule still holds and is still tested. The shadow quarter's entire purpose is to answer <em>“would this score have said anything true?”</em> before anyone's appraisal depends on it — and that question cannot be answered without computing the number.</p>
+
+      <h3>Four structural constraints, none of them a comment</h3>
+      <ol class="constraints">
+        <li><p>Every export is prefixed <code>shadow</code>, so a call site cannot be mistaken for production scoring when reading a diff.</p></li>
+        <li><p>The only persistence target is <code>ShadowScore</code>, never joined into appraisal evidence. TM-FR-060 stays true while a shadow quarter runs, and a test asserts it.</p></li>
+        <li><p>Reads are <strong>Audit only</strong> — see the matrix below.</p></li>
+        <li><p><code>isInForce</code> has no <code>true</code> branch anywhere in the codebase. Publishing the score is a schema and router change with a review, not a flag flip.</p></li>
+      </ol>
+
+      <h3>Who may read a shadow score</h3>
+      <div class="matrix">
+        <div class="access allowed">
+          <span class="role">AUDIT</span>
+          <span><span class="pill good">Permitted</span></span>
+          <span class="why">A control the compliance function cannot inspect is not a control.</span>
+        </div>
+        <div class="access">
+          <span class="role">The subject</span>
+          <span><span class="pill stop">Refused</span></span>
+          <span class="why">A number nobody is permitted to act on should not circulate in appraisal season. Telling someone their shadow score and then insisting it does not count is not a control, it is a formality nobody will respect.</span>
+        </div>
+        <div class="access">
+          <span class="role">Their manager</span>
+          <span><span class="pill stop">Refused</span></span>
+          <span class="why">Same, and worse — they are the person who would act on it.</span>
+        </div>
+        <div class="access">
+          <span class="role">HR</span>
+          <span><span class="pill stop">Refused</span></span>
+          <span class="why">Until F3-01..06 is signed off, the weights are this office's <em>draft</em>, not HR's policy. Showing HR a distribution computed under weights they have not agreed invites the sign-off to be retrofitted to the result.</span>
+        </div>
+        <div class="access">
+          <span class="role">SYSTEM_ADMIN</span>
+          <span><span class="pill stop">Refused</span></span>
+          <span class="why">Running the system is not standing to read people's performance — the same reason it cannot read confidential tasks.</span>
+        </div>
+      </div>
+
+      <h3>What the shadow quarter is actually looking for</h3>
+      <p><strong>Not “is the score low”.</strong> The failure this is designed to catch is that <em>the score does not discriminate</em> — if 90% of people land within a couple of points of each other, the model has measured nothing and must not be published, however defensible its arithmetic looks.</p>
+
+      <p>The review states a conclusion rather than producing a chart, so it ends in something somebody has to disagree with in writing:</p>
+
+      <ul class="plain">
+        <li>Fewer than 20 employees above the volume floor → too few to conclude anything.</li>
+        <li>10th-to-90th percentile spread below 10 points → barely separates anyone.</li>
+        <li>More than 70% within 5 points of the median → not discriminating.</li>
+      </ul>
+
+      <p>Advisory only. HR signs off, not the function.</p>
+
+      <div class="callout warn">
+        <div class="head">The screen is not in the sidebar</div>
+        <p>And it renders <strong>nothing</strong> — not even its headings — until the caller is known to be permitted. Advertising a route every other role would be refused would tell the business that a weighted performance score exists and is being computed on them, which is precisely the impression a shadow quarter is run to avoid creating.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= §5 ================= -->
+  <section class="block">
+    <div class="rail">
+      <span>§5</span>
+      <span>Open</span>
+    </div>
+    <div class="body">
+      <h2>Carried out of Phase 7</h2>
+
+      <div class="callout">
+        <div class="head">Resolved · access</div>
+        <p>Synapse's role catalogue holds exactly five roles. The four that should map already do. The other six workPulse roles have <strong>no Synapse counterpart at all</strong>, so they could never have been fixed by adding mapping rows — there was nothing to map from. Pointing one at an existing operational role would have handed confidential-task visibility to whoever runs the support desk.</p>
+        <div class="roles">
+          <span>DEPARTMENT_HEAD</span><span>PROJECT_MANAGER</span><span>EXECUTIVE</span>
+          <span>EXECUTIVE_RESTRICTED</span><span>AUDIT</span><span>INTEGRATION_SERVICE</span>
+        </div>
+        <p><strong>What was built:</strong> a write path for direct grants — the mechanism the schema always anticipated for “grants Synapse has no concept of, notably AUDIT” — mapping administration that refuses a Synapse role code which does not exist, and an access screen that names every role nobody can currently reach.</p>
+      </div>
+
+      <h3>Guardrails on granting</h3>
+      <div class="matrix">
+        <div class="access">
+          <span class="role">Self-grant</span>
+          <span><span class="pill stop">Refused</span></span>
+          <span class="why">AUDIT and EXECUTIVE_RESTRICTED cannot be granted to yourself. An administrator who could hand themselves AUDIT would make the whole separation theatre — AUDIT exists to watch the people who administer the system. Granting them to someone else stays possible, audited, and visible to Compliance.</span>
+        </div>
+        <div class="access">
+          <span class="role">Sensitive roles</span>
+          <span><span class="pill warn">Reason required</span></span>
+          <span class="why">AUDIT, EXECUTIVE_RESTRICTED, EXECUTIVE and INTEGRATION_SERVICE each need a written reason on the record.</span>
+        </div>
+        <div class="access">
+          <span class="role">INTEGRATION_SERVICE</span>
+          <span><span class="pill stop">Not on a person</span></span>
+          <span class="why">It is for service accounts consuming the Command Centre feed. On someone with an employee record it would be a standing credential nobody reviews.</span>
+        </div>
+        <div class="access">
+          <span class="role">CLIENT_SELF</span>
+          <span><span class="pill stop">Never mappable</span></span>
+          <span class="why">Held by external clients. Mapping it — even to the lowest role — would give customers workPulse accounts and desk cards. Leaving it merely absent invited a future administrator to “complete” the map, so it is refused in code.</span>
+        </div>
+      </div>
+
+      <h3>What SIHL decides, per role</h3>
+      <p>Six roles are unreachable today, and the access screen leads with that count. There are two ways to close each one, and both are business decisions rather than engineering ones:</p>
+      <ul class="plain">
+        <li><strong>Create the role in Synapse and map it here.</strong> Durable, and right for DEPARTMENT_HEAD, PROJECT_MANAGER and EXECUTIVE, which track the org chart.</li>
+        <li><strong>Grant it directly.</strong> Right for AUDIT — BRS Section 18 puts it outside the line hierarchy and Appendix F wants joint CTO and Compliance sign-off — and for EXECUTIVE_RESTRICTED and INTEGRATION_SERVICE.</li>
+      </ul>
+
+      <div class="callout warn">
+        <div class="head">Conflict · TM-FR-061 vs Addendum 02</div>
+        <p>TM-FR-061 asks for analytics weighted by <strong>Priority and Complexity</strong>. Addendum 02 §2 defines a Weighted Task Unit as <code>priorityWeight × (estimatedMinutes ÷ 30)</code> — effort, not complexity. These are not the same thing: a two-hour reconciliation and a two-hour regulatory interpretation take the same time and are not the same work.</p>
+        <p><strong>What was done:</strong> a <code>complexity</code> attribute was added and is captured at task creation. It is <em>not</em> a term in the scoring formula. Changing a signed-off formula unilaterally would be wrong, and capturing the attribute now means the history exists when the amendment lands.</p>
+      </div>
+
+      <h3>Decisions still needed from SIHL</h3>
+      <div class="scroll">
+        <table>
+          <thead>
+            <tr><th>Ref</th><th>Decision</th><th>Owner</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><code>F3-01..06</code></td><td>Addendum 02 weights, and whether the composite is ever published</td><td>HR</td></tr>
+            <tr><td>—</td><td>Whether Complexity enters the WTU formula, and at what weights</td><td>HR · Product &amp; AI Office</td></tr>
+            <tr><td>—</td><td>For each of the six unreachable roles: create it in Synapse, or grant it directly</td><td>CTO · Compliance</td></tr>
+            <tr><td>—</td><td>Command Centre event thresholds, after observing real volume</td><td>CEO · CXO</td></tr>
+            <tr><td>—</td><td>Whether HR consume evidence via this API or via Frappe HR Goal/Appraisal</td><td>HR · CTO</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <div>SIHL Work Management Platform — Phase 7 build record. Prepared by the Product &amp; AI Office.</div>
+    <div>Verification: 237 unit tests, 159 end-to-end tests against the live schema. All twenty routes build. Behaviour confirmed in-browser against a real Synapse session.</div>
+  </footer>
+
+</div>
+
+</body>
+</html>

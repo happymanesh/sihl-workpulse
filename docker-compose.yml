@@ -1,0 +1,68 @@
+version: "3.9"
+
+# Local development infrastructure for SIHL workPulse.
+# Run: docker compose up -d
+# This brings up everything workPulse needs EXCEPT the app itself
+# (apps/api and apps/web run via `npm run dev` on the host, or in the
+# separate Dockerfiles in each app for a full container build later).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: workpulse
+      POSTGRES_PASSWORD: workpulse_dev_password
+      POSTGRES_DB: workpulse
+    ports:
+      - "5432:5432"
+    volumes:
+      - workpulse_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workpulse"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - workpulse_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # No identity provider here by design: identity is federated to Synapse
+  # (docs/synapse-integration.md), which runs as its own application. Point
+  # SESSION_SECRET and SYNAPSE_DATABASE_URL at it.
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: workpulse
+      MINIO_ROOT_PASSWORD: workpulse_dev_password
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - workpulse_minio_data:/data
+
+  adminer:
+    image: adminer:latest
+    restart: unless-stopped
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+
+volumes:
+  workpulse_pg_data:
+  workpulse_redis_data:
+  workpulse_minio_data:
