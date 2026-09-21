@@ -36,8 +36,18 @@ jobs:
 
     env:
       DATABASE_URL: "postgresql://workpulse:workpulse_ci_password@localhost:5432/workpulse_test?schema=public"
+      # Stand-in for Synapse's own directory. In every real environment this
+      # points at Synapse through a SELECT-only role; here it is a throwaway
+      # database loaded from packages/db/ci/synapse-directory-fixture.sql so the
+      # federated identity path is exercised rather than skipped.
+      SYNAPSE_DATABASE_URL: "postgresql://workpulse:workpulse_ci_password@localhost:5432/synapse_test?schema=public"
+      # CI-only value. The real secret is shared with Synapse and lives nowhere
+      # in this repository. SynapseSessionService throws at construction without
+      # it, so the app cannot boot for an e2e test at all.
+      SESSION_SECRET: "ci-only-session-secret-not-used-anywhere-else"
       REDIS_URL: "redis://localhost:6379"
       NODE_ENV: test
+      FRAPPE_SYNC_MODE: mock
 
     steps:
       - uses: actions/checkout@v5
@@ -70,8 +80,31 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      - name: Unit + integration tests (apps/api)
+      - name: Unit tests (apps/api)
         run: npm run test -w apps/api
+
+      - name: Create the Synapse directory stand-in
+        run: |
+          psql "postgresql://workpulse:workpulse_ci_password@localhost:5432/postgres" \
+            -v ON_ERROR_STOP=1 -c 'CREATE DATABASE synapse_test'
+          psql "$SYNAPSE_DATABASE_URL" \
+            -v ON_ERROR_STOP=1 -f packages/db/ci/synapse-directory-fixture.sql
+
+      - name: Seed reference data
+        # Task types and the Synapse role map come from the seed; Employees and
+        # Departments do not - they are a read-cache that only the Frappe HR
+        # sync writes, so CI populates them the same way, in mock mode. The e2e
+        # suites need both.
+        run: |
+          npm run db:seed
+          npm run sync:frappe-hr -w apps/api
+
+      - name: End-to-end tests (apps/api)
+        # These are the tests that prove the rules rather than the arithmetic:
+        # confidential work stays hidden from SYSTEM_ADMIN, a flag never counts
+        # against anyone, an exit cannot complete with a vacant desk card, and
+        # an unmapped Synapse role is refused outright.
+        run: npm run test:e2e -w apps/api
 
       - name: Build
         run: npm run build
