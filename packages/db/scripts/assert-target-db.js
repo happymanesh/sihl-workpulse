@@ -15,7 +15,12 @@
 const path = require("path");
 const fs = require("fs");
 
-const EXPECTED_DB = "workpulse";
+// workPulse's own databases, and nothing else. CI runs against its own
+// throwaway database, so a single expected name would make this guard fail
+// there - which it did, silently, behind a continue-on-error in the workflow.
+// The point of the guard is to block OTHER projects' databases, not to insist
+// on one name.
+const EXPECTED_DBS = ["workpulse", "workpulse_test"];
 
 // Prisma loads the root .env itself, but this runs first, so load it here too.
 const envPath = path.resolve(__dirname, "../../../.env");
@@ -36,7 +41,7 @@ if (!url) {
   fail([
     "DATABASE_URL is not set.",
     "",
-    `Expected a connection to the "${EXPECTED_DB}" database.`,
+    `Expected one of: ${EXPECTED_DBS.join(", ")}.`,
     "See docs/phase-0-setup.md.",
   ]);
 }
@@ -51,15 +56,15 @@ try {
 // Strip the leading slash; ignore any ?schema= suffix, which URL already splits off.
 const dbName = decodeURIComponent(parsed.pathname.replace(/^\//, ""));
 
-if (dbName !== EXPECTED_DB) {
+if (!EXPECTED_DBS.includes(dbName)) {
   fail([
     `DATABASE_URL points at the database "${dbName}".`,
-    `This command only ever runs against "${EXPECTED_DB}".`,
+    `This command only ever runs against: ${EXPECTED_DBS.join(", ")}.`,
     "",
     "Other databases on this server belong to other projects.",
     "Migrating one of them would drop its tables.",
     "",
-    `Fix DATABASE_URL in .env so it ends with /${EXPECTED_DB}, then retry.`,
+    `Fix DATABASE_URL in .env so it ends with /${EXPECTED_DBS[0]}, then retry.`,
   ]);
 }
 

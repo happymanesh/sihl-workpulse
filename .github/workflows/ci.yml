@@ -40,27 +40,29 @@ jobs:
       NODE_ENV: test
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
-          node-version: "20"
+          node-version: "22"
           cache: "npm"
 
       - name: Install dependencies
         run: npm ci
 
-      - name: Generate Prisma client
-        run: npm run db:generate
+      - name: Build @workpulse/db
+        # Generates the Prisma client AND compiles packages/db to dist/.
+        # `main`/`types` point at dist/, which is gitignored, so without this
+        # every workspace that imports @workpulse/db fails to typecheck. This
+        # passed locally only because dist/ already existed on the machine.
+        run: npm run build:db
 
       - name: Apply migrations
-        run: npm run db:migrate:deploy -w packages/db
-        # No-op with a clean schema until the first real migration exists
-        # (Phase 0 ships the schema; `prisma migrate dev` creates the first
-        # migration locally - see docs/phase-0-setup.md). Keeping this step
-        # in CI now means Phase 1's first migration is checked automatically
-        # rather than the pipeline needing a rewrite later.
-        continue-on-error: true
+        # Was `continue-on-error: true` with a note about there being no
+        # migrations yet. There are ten, and the tolerance was hiding a real
+        # failure: the target-database guard rejected CI's workpulse_test.
+        # A migration that cannot apply is a broken build, so this fails now.
+        run: npm run db:migrate:deploy
 
       - name: Lint
         run: npm run lint
