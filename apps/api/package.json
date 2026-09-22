@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "jest",
     "test:e2e": "jest --config ./test/jest-e2e.json",
-    "sync:frappe-hr": "ts-node -r tsconfig-paths/register src/jobs/run-frappe-hr-sync.ts"
+    "sync:frappe-hr": "ts-node -r tsconfig-paths/register src/jobs/run-frappe-hr-sync.ts",
+    "map:synapse-roles": "ts-node -r tsconfig-paths/register src/jobs/run-map-synapse-roles.ts"
   },
   "dependencies": {
     "@nestjs/bullmq": "^10.1.1",

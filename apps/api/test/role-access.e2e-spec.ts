@@ -275,6 +275,29 @@ const canRun = Boolean(process.env.DATABASE_URL);
       ).rejects.toBeInstanceOf(ForbiddenException);
     });
 
+    it("accepts a mixed-case Synapse role code and stores Synapse's spelling", async () => {
+      // Synapse role codes are user-authored rows: "DeptHead" and
+      // "Executive_Restricted" sit alongside "ADMIN". Matching has to be
+      // case-insensitive, and what gets STORED has to be Synapse's own
+      // spelling - IdentityService matches the exact string Synapse returns,
+      // so a normalised copy would resolve to nothing and silently grant
+      // nobody anything.
+      const catalogue = await maps.list(admin());
+      const mixed = catalogue.synapseRoles.find(
+        (r) => r.isMappable && r.roleCode !== r.roleCode.toUpperCase(),
+      );
+      if (!mixed) return; // directory has no mixed-case role to prove it with
+
+      const saved = await maps.upsert(admin(), {
+        synapseRoleCode: mixed.roleCode.toLowerCase(),
+        workPulseRole: WorkPulseRole.EMPLOYEE,
+        reason: `${RUN} case handling`,
+      });
+      expect(saved.synapseRoleCode).toBe(mixed.roleCode);
+
+      await maps.deactivate(admin(), mixed.roleCode, `${RUN} cleanup`);
+    }, 30_000);
+
     it("shows the real Synapse catalogue alongside the mappings", async () => {
       const view = await maps.list(admin());
       expect(Array.isArray(view.mappings)).toBe(true);

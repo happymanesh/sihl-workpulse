@@ -74,19 +74,32 @@ export class RoleMapService {
   ) {
     this.assertAdmin(actor);
 
-    const code = input.synapseRoleCode.trim().toUpperCase();
+    const typed = input.synapseRoleCode.trim();
+    const synapseRoles = await this.directory.listRoles();
 
-    if (RoleMapService.NEVER_MAPPABLE.includes(code)) {
+    // Match what was typed against Synapse's catalogue case-INSENSITIVELY, then
+    // store Synapse's own spelling.
+    //
+    // Role codes in Synapse are user-authored rows and are not all uppercase -
+    // "DeptHead" and "Executive_Restricted" sit alongside "ADMIN". This used to
+    // uppercase the input, which was wrong twice over: the existence check
+    // below never matched a mixed-case role, and had a row been stored as
+    // "DEPTHEAD" it would never have resolved, because IdentityService matches
+    // the exact string Synapse returns. Storing the canonical spelling is what
+    // makes the mapping actually grant anything.
+    const match = synapseRoles.find((r) => r.roleCode.toLowerCase() === typed.toLowerCase());
+    const code = match?.roleCode ?? typed;
+
+    if (RoleMapService.NEVER_MAPPABLE.some((n) => n.toLowerCase() === code.toLowerCase())) {
       throw new BadRequestException(
         `${code} is held by external clients and must never be mapped to a workPulse role. ` +
           "Mapping it would give customers workPulse accounts.",
       );
     }
 
-    const synapseRoles = await this.directory.listRoles();
-    if (synapseRoles.length > 0 && !synapseRoles.some((r) => r.roleCode === code)) {
+    if (synapseRoles.length > 0 && !match) {
       throw new BadRequestException(
-        `Synapse has no role "${code}". A mapping to a role that does not exist grants nothing ` +
+        `Synapse has no role "${typed}". A mapping to a role that does not exist grants nothing ` +
           "and looks like coverage. Ask the CTO to create it in Synapse first.",
       );
     }
