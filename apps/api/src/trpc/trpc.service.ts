@@ -881,6 +881,9 @@ export class TrpcService {
             this.roleMapService.deactivate(ctx.user, input.synapseRoleCode, input.reason),
           ),
 
+        /** People who have signed in, for the grant picker. */
+        users: protectedProcedure.query(({ ctx }) => this.roleGrantService.grantableUsers(ctx.user)),
+
         /** Everyone holding a directly granted role, with the grant trail. */
         holders: protectedProcedure.query(({ ctx }) => this.roleGrantService.holders(ctx.user)),
 

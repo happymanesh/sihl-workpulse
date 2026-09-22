@@ -155,6 +155,35 @@ export class RoleGrantService {
   }
 
   /**
+   * Everyone workPulse knows about, for the grant picker.
+   *
+   * Only people who have signed in at least once appear, because that is when
+   * the user row is created - and `grant` refuses anyone else. Showing the
+   * whole Synapse directory here would offer names that cannot be granted to,
+   * which is a worse answer than a short list.
+   */
+  async grantableUsers(actor: AuthenticatedUser) {
+    if (
+      !actor.roles.includes(WorkPulseRole.SYSTEM_ADMIN) &&
+      !actor.roles.includes(WorkPulseRole.AUDIT)
+    ) {
+      throw new ForbiddenException("Only a system administrator or Audit may list users");
+    }
+
+    return prisma.user.findMany({
+      select: {
+        synapseUserUid: true,
+        synapseUsername: true,
+        localRoles: true,
+        isEmployeeUnlinked: true,
+        lastSeenAt: true,
+        employee: { select: { name: true, department: { select: { name: true } } } },
+      },
+      orderBy: { synapseUsername: "asc" },
+    });
+  }
+
+  /**
    * Everyone holding a directly granted role, and what it came from.
    *
    * Read by Compliance as much as by administrators: a sensitive role nobody

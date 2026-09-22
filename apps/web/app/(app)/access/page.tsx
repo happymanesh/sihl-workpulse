@@ -36,10 +36,12 @@ export default function AccessPage() {
   const coverage = trpc.access.coverage.useQuery();
   const mappings = trpc.access.mappings.useQuery();
   const holders = trpc.access.holders.useQuery();
+  const users = trpc.access.users.useQuery();
 
   const invalidate = () => {
     utils.access.coverage.invalidate();
     utils.access.holders.invalidate();
+    utils.access.users.invalidate();
     utils.access.mappings.invalidate();
   };
 
@@ -155,15 +157,21 @@ export default function AccessPage() {
         <CardContent className="flex flex-col gap-3 py-4">
           <span className="label-caps">Grant a role directly</span>
           <div className="flex flex-wrap items-end gap-3">
-            <Field label="Synapse user id" htmlFor="uid" className="w-36">
-              <Input
-                id="uid"
-                type="number"
-                min={1}
-                value={uid}
-                placeholder="e.g. 2"
-                onChange={(e) => setUid(e.target.value)}
-              />
+            {/* A picker, not a number. Nobody knows their colleagues' Synapse
+                uids, and only people who have signed in can be granted to -
+                the user row is created lazily on first login. */}
+            <Field label="Person" htmlFor="uid" className="min-w-64 flex-1">
+              <Select id="uid" value={uid} onChange={(e) => setUid(e.target.value)}>
+                <option value="">Choose someone…</option>
+                {(users.data ?? []).map((u) => (
+                  <option key={u.synapseUserUid} value={String(u.synapseUserUid)}>
+                    {u.employee?.name ?? u.synapseUsername}
+                    {u.employee?.department?.name ? ` — ${u.employee.department.name}` : ""}
+                    {u.isEmployeeUnlinked ? " (no employee record)" : ""}
+                    {` · ${u.synapseUsername}`}
+                  </option>
+                ))}
+              </Select>
             </Field>
             <Field label="Role" htmlFor="role" className="w-56">
               <Select id="role" value={grantRole} onChange={(e) => setGrantRole(e.target.value as Role)}>
@@ -198,6 +206,12 @@ export default function AccessPage() {
               Grant
             </Button>
           </div>
+
+          <p className="text-2xs text-muted-foreground">
+            Only people who have signed in to workPulse at least once appear here — the account is
+            created on first login. Prefer assigning the role in Synapse; a direct grant is for
+            roles Synapse has no equivalent for.
+          </p>
 
           {SENSITIVE.includes(grantRole) && (
             <p className="text-2xs text-warning">
@@ -328,17 +342,21 @@ export default function AccessPage() {
           <div className={cn("flex flex-col gap-1.5 text-2xs text-muted-foreground")}>
             <p>
               <span className="font-medium text-foreground">
-                Synapse has five roles, and six workPulse roles have no counterpart in it.
+                Two different things, and only one of them lives here.
               </span>{" "}
-              They cannot be fixed by adding mapping rows, because there is nothing to map from.
-              Pointing one at an existing operational role — SUPPORT_LEAD to EXECUTIVE, say — would
-              hand confidential-task visibility to whoever runs the support desk. Direct grants are
-              the mechanism for these, and every one is audited.
+              A <em>mapping</em> says what a Synapse role means in workPulse — done once per role,
+              org-wide. Assigning that role to a <em>person</em> happens in Synapse only, and
+              workPulse re-reads it on every request, so revoking someone&apos;s role takes effect on
+              their next click rather than when their session expires.
             </p>
             <p>
-              The durable fix is for SIHL to create the corresponding roles in Synapse and map them
-              here. Until then, a direct grant is a named decision with a reason attached, which is
-              the right shape for a role like AUDIT anyway.
+              A <em>direct grant</em> below is the exception: it exists for roles Synapse has no
+              equivalent for. Prefer creating the role in Synapse and mapping it — that survives
+              people joining and leaving, which a per-person grant does not.
+            </p>
+            <p>
+              CLIENT_SELF is held by external clients and can never be mapped, at any privilege
+              level. Mapping it — even to the lowest role — would give customers workPulse accounts.
             </p>
           </div>
         </CardContent>
