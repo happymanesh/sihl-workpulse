@@ -3,14 +3,16 @@
 import { useEffect, useState } from "react";
 import { MessageCircle, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { chatHubSupabase } from "@/lib/chat-hub-browser-client";
 
 /**
  * chat-hub's TopBar-style agent access point, same feature already built in
- * Synapse (components/app-shell/ChatHubBell.tsx there). Read-only: chat-hub
- * has no reply capability anywhere yet, so this shows a transcript, not a
- * reply box. Calls go through /api/backend/chat-hub/* (next.config.js's
- * existing rewrite to the NestJS API), which is where the Synapse-session
- * cookie is actually verified - this component has no auth logic of its own.
+ * Synapse (components/app-shell/ChatHubBell.tsx there). Now reply-capable
+ * (2026-09-23): a reply goes through /api/backend/chat-hub/conversations/:id/reply
+ * (the NestJS controller re-checks ownership before ever calling chat-hub), and the
+ * visitor's own follow-ups arrive live via a direct Supabase Realtime subscription
+ * (see lib/chat-hub-browser-client.ts for why this talks to chat-hub's Supabase
+ * project directly instead of through the backend).
  */
 
 interface ConversationSummary {
@@ -22,9 +24,17 @@ interface ConversationSummary {
   messageCount: number;
 }
 
+interface TranscriptMessage {
+  id: string;
+  conversation_id: string;
+  sender_type: string;
+  content: string;
+  created_at: string;
+}
+
 interface Transcript {
   conversation: { id: string; status: string };
-  messages: { id: string; sender_type: string; content: string; created_at: string }[];
+  messages: TranscriptMessage[];
 }
 
 function formatDateTime(value: string): string {
@@ -37,8 +47,11 @@ export function ChatHubBell() {
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [open, setOpen] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [transcript, setTranscript] = useState<Transcript | null>(null);
+  const [messages, setMessages] = useState<TranscriptMessage[]>([]);
   const [transcriptLoading, setTranscriptLoading] = useState(false);
+  const [transcriptError, setTranscriptError] = useState(false);
+  const [reply, setReply] = useState("");
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,13 +68,63 @@ export function ChatHubBell() {
 
   function openConversation(id: string) {
     setActiveId(id);
-    setTranscript(null);
+    setMessages([]);
+    setTranscriptError(false);
     setTranscriptLoading(true);
     fetch(`/api/backend/chat-hub/conversations/${id}`)
       .then((res) => (res.ok ? res.json() : null))
-      .then((data: Transcript | null) => setTranscript(data))
-      .catch(() => setTranscript(null))
+      .then((data: Transcript | null) => {
+        if (data) setMessages(data.messages);
+        else setTranscriptError(true);
+      })
+      .catch(() => setTranscriptError(true))
       .finally(() => setTranscriptLoading(false));
+  }
+
+  // Delivers the visitor's follow-up messages live while the modal is open. Our own
+  // replies are skipped here - already added optimistically in sendReply() below.
+  useEffect(() => {
+    if (!activeId) return;
+
+    const channel = chatHubSupabase
+      .channel(`messages:${activeId}`)
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `conversation_id=eq.${activeId}` },
+        (payload) => {
+          const incoming = payload.new as TranscriptMessage;
+          if (incoming.sender_type === "agent") return;
+          setMessages((prev) => (prev.some((m) => m.id === incoming.id) ? prev : [...prev, incoming]));
+        },
+      )
+      .subscribe();
+
+    return () => {
+      chatHubSupabase.removeChannel(channel);
+    };
+  }, [activeId]);
+
+  function sendReply() {
+    const content = reply.trim();
+    if (!content || !activeId || sending) return;
+
+    setSending(true);
+    setReply("");
+    setMessages((prev) => [
+      ...prev,
+      { id: crypto.randomUUID(), conversation_id: activeId, sender_type: "agent", content, created_at: new Date().toISOString() },
+    ]);
+
+    fetch(`/api/backend/chat-hub/conversations/${activeId}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error();
+      })
+      .catch(() => setTranscriptError(true))
+      .finally(() => setSending(false));
   }
 
   return (
@@ -116,7 +179,7 @@ export function ChatHubBell() {
         >
           <div
             className={cn(
-              "max-h-[80vh] w-full max-w-md overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl",
+              "flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-lg border border-border bg-popover text-popover-foreground shadow-xl",
             )}
             onClick={(e) => e.stopPropagation()}
           >
@@ -130,21 +193,46 @@ export function ChatHubBell() {
                 <X className="size-3.5" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto p-4">
+            <div className="flex-1 overflow-y-auto p-4">
               {transcriptLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-              {!transcriptLoading && !transcript && (
+              {!transcriptLoading && transcriptError && messages.length === 0 && (
                 <p className="text-sm text-muted-foreground">Could not load this conversation.</p>
               )}
-              {transcript?.messages.map((m) => (
-                <div key={m.id} className="mb-3 last:mb-0">
-                  <p className="text-xs font-semibold text-muted-foreground">
-                    {m.sender_type === "visitor" ? "Visitor" : m.sender_type}
-                  </p>
-                  <p className="mt-0.5 text-sm whitespace-pre-wrap">{m.content}</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">{formatDateTime(m.created_at)}</p>
+              {messages.map((m) => (
+                <div key={m.id} className={cn("mb-3 flex last:mb-0", m.sender_type === "agent" ? "justify-end" : "justify-start")}>
+                  <div
+                    className={cn(
+                      "max-w-[80%] rounded-lg px-3 py-1.5",
+                      m.sender_type === "agent" ? "bg-primary text-primary-foreground" : "bg-muted",
+                    )}
+                  >
+                    <p className="text-sm whitespace-pre-wrap">{m.content}</p>
+                    <p className="mt-0.5 text-[10px] opacity-70">{formatDateTime(m.created_at)}</p>
+                  </div>
                 </div>
               ))}
             </div>
+            <div className="flex items-center gap-2 border-t border-border p-3">
+              <input
+                value={reply}
+                onChange={(e) => setReply(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && sendReply()}
+                placeholder="Type a reply…"
+                disabled={sending}
+                className="flex-1 rounded-md border border-border bg-background px-3 py-1.5 text-sm"
+              />
+              <button
+                type="button"
+                onClick={sendReply}
+                disabled={sending || !reply.trim()}
+                className="rounded-md bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-50"
+              >
+                Send
+              </button>
+            </div>
+            {transcriptError && messages.length > 0 && (
+              <p className="px-3 pb-2 text-xs text-danger">Could not send reply.</p>
+            )}
           </div>
         </div>
       )}

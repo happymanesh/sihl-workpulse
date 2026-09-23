@@ -41,7 +41,7 @@ export class ChatHubClientService {
 
   constructor(private readonly config: ConfigService) {}
 
-  private async serviceFetch(path: string): Promise<Response | null> {
+  private async serviceFetch(path: string, init: RequestInit = {}): Promise<Response | null> {
     const baseUrl = this.config.get<string>("CHAT_HUB_BASE_URL");
     const serviceSecret = this.config.get<string>("CHAT_HUB_SERVICE_SECRET");
     if (!baseUrl || !serviceSecret) {
@@ -51,7 +51,8 @@ export class ChatHubClientService {
 
     try {
       const response = await fetch(`${baseUrl}${path}`, {
-        headers: { Authorization: `Bearer ${serviceSecret}` },
+        ...init,
+        headers: { ...init.headers, Authorization: `Bearer ${serviceSecret}` },
         signal: AbortSignal.timeout(8_000),
       });
       if (!response.ok) {
@@ -78,5 +79,22 @@ export class ChatHubClientService {
     const response = await this.serviceFetch(`/api/service/conversations/${encodeURIComponent(conversationId)}`);
     if (!response) return null;
     return response.json();
+  }
+
+  /**
+   * Sends a reply as `username`. chat-hub verifies username is actually the agent this
+   * conversation is targeted at - a caller can't reply as someone else's conversation
+   * just by holding the shared secret. Returns null on any failure; the caller decides
+   * what to show, this layer doesn't distinguish why.
+   */
+  async sendReply(conversationId: string, username: string, content: string): Promise<ChatHubMessage | null> {
+    const response = await this.serviceFetch(`/api/service/conversations/${encodeURIComponent(conversationId)}/reply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ synapseUsername: username, content }),
+    });
+    if (!response) return null;
+    const data = await response.json();
+    return data.message ?? null;
   }
 }
