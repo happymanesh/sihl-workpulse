@@ -22,6 +22,7 @@ import { AnalyticsModule } from "./modules/analytics/analytics.module";
 import { CommandCentreModule } from "./modules/command-centre/command-centre.module";
 import { PredictionModule } from "./modules/prediction/prediction.module";
 import { AppraisalModule } from "./modules/appraisal/appraisal.module";
+import { ChatHubModule } from "./modules/chat-hub/chat-hub.module";
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { AppraisalModule } from "./modules/appraisal/appraisal.module";
     CommandCentreModule,
     PredictionModule,
     AppraisalModule,
+    ChatHubModule,
     TrpcModule,
   ],
 })
