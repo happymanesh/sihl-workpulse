@@ -39,11 +39,21 @@ Appendix A rows as functional requirements and ignore their Frappe columns.
 
 SIHL's other systems (Vision/CRM, SIHL-One) run on Frappe. workPulse is a
 deliberate departure from that, built fresh with this stack. The one thing
-that does NOT change: **Frappe HR remains the sole source of truth for
-Employee/Department data.** workPulse reads a cache of it
-(`apps/api/src/jobs/frappe-hr-sync.ts`), it never becomes a second place
-employee data can drift from. Do not add employee/department write paths
-to this app outside that sync job.
+that does NOT change: **workPulse is never a source of truth for
+Employee/Department data.** It reads a cache (`apps/api/src/jobs/frappe-hr-sync.ts`)
+and never becomes a second place employee data can drift from. Do not add
+employee/department write paths to this app outside that sync job.
+
+**Since 7 Oct 2026 the HR source is Synapse, not Frappe HR** (`HR_SOURCE=synapse`,
+the default; `HR_SOURCE=frappe` still works). Synapse ingests SIHL's HR system
+(Spine HR) into its `hr_employee` table; `synapse-hr-client.ts` reads that plus
+Synapse users that carry an `employee_code`, read-only, over `SYNAPSE_DATABASE_URL`.
+
+**Users link to employees by EMPLOYEE CODE, never by email.** `Employee.employeeCode`
+(renamed from `frappeEmployeeId`) = Synapse `user_details.employee_code`. Email is
+optional and not unique: some mailboxes are shared by a whole team, and an email match
+would hand one person another's work. `SynapseDirectoryService.findActiveUser` also
+refuses SUSPENDED Synapse users, matching Synapse's own login/session check.
 
 ## Stack and why
 

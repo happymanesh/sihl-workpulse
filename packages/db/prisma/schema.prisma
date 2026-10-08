@@ -24,19 +24,25 @@ datasource db {
 }
 
 // =============================================================================
-// PHASE 0: Employee / Department read-cache (source of truth stays Frappe HR)
+// PHASE 0: Employee / Department read-cache. Source: Synapse's HR data (Spine HR via
+// Synapse hr_employee, plus Synapse users with an employee code) since 2026-10-07;
+// Frappe HR remains available as an alternative source (HR_SOURCE=frappe).
 // =============================================================================
 
-/// Cached read copy of Frappe HR's Employee doctype. Never write-authoritative -
-/// the sync job (apps/api/src/jobs/frappe-hr-sync.job.ts) overwrites these rows
-/// on each run. See BRS Section 4.2 for why this is a cache, not a duplicate master.
+/// Cached read copy of the HR employee record. Never write-authoritative - the sync
+/// job (apps/api/src/jobs/frappe-hr-sync.job.ts) overwrites these rows on each run.
+/// See BRS Section 4.2 for why this is a cache, not a duplicate master.
 model Employee {
-  id               String   @id @default(cuid())
-  frappeEmployeeId String   @unique // Frappe HR's own Employee ID - the join key
-  name             String
-  email            String   @unique
-  designation      String?
-  isActive         Boolean  @default(true)
+  id           String  @id @default(cuid())
+  /// The employee code - the join key to Synapse (UserDetails.employee_code) and to
+  /// HR. Users are linked to employees by this, never by email (2026-10-07): some
+  /// mailboxes are shared by a whole team, so an email does not identify a person.
+  employeeCode String  @unique
+  name         String
+  /// Not unique and not required: team-shared mailboxes and staff without email exist.
+  email        String?
+  designation  String?
+  isActive     Boolean @default(true)
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
@@ -48,35 +54,35 @@ model Employee {
   user User?
 
   // Phase 1
-  deskCardsHeld     DeskCard[]              @relation("DeskCardHolder")
-  deskCardHistory   DeskCardHolderHistory[]
-  tasksAssigned     Task[]                  @relation("TaskAssignee")
-  tasksReviewing    Task[]                  @relation("TaskReviewer")
-  timeBlocks        TimeBlock[]             @relation("TimeBlockOwner")
-  capacityBudget    CapacityBudget?
+  deskCardsHeld   DeskCard[]              @relation("DeskCardHolder")
+  deskCardHistory DeskCardHolderHistory[]
+  tasksAssigned   Task[]                  @relation("TaskAssignee")
+  tasksReviewing  Task[]                  @relation("TaskReviewer")
+  timeBlocks      TimeBlock[]             @relation("TimeBlockOwner")
+  capacityBudget  CapacityBudget?
 
   // Phase 3
-  policiesOwned     Policy[]                @relation("PolicyOwner")
-  policiesApproving Policy[]                @relation("PolicyApprover")
-  processesOwned    Process[]               @relation("ProcessOwner")
+  policiesOwned     Policy[]  @relation("PolicyOwner")
+  policiesApproving Policy[]  @relation("PolicyApprover")
+  processesOwned    Process[] @relation("ProcessOwner")
 
   // Phase 4
-  teamsOwned        Team[]                  @relation("TeamOwner")
+  teamsOwned        Team[]           @relation("TeamOwner")
   teamMemberships   TeamMember[]
-  projectsOwned     Project[]               @relation("ProjectOwner")
-  projectsSponsored Project[]               @relation("ProjectSponsor")
-  projectsManaged   Project[]               @relation("ProjectManager")
+  projectsOwned     Project[]        @relation("ProjectOwner")
+  projectsSponsored Project[]        @relation("ProjectSponsor")
+  projectsManaged   Project[]        @relation("ProjectManager")
   raciAssignments   RaciAssignment[]
   daciAssignments   DaciAssignment[]
 
   // Phase 5
-  delegationsFrom   Delegation[]            @relation("DelegationFrom")
-  delegationsTo     Delegation[]            @relation("DelegationTo")
-  handovers         Handover[]
+  delegationsFrom Delegation[] @relation("DelegationFrom")
+  delegationsTo   Delegation[] @relation("DelegationTo")
+  handovers       Handover[]
 
   // Phase 6
-  flagsAbout        TaskFlag[]              @relation("FlagSubject")
-  analyticsPeriods  AnalyticsPeriod[]
+  flagsAbout          TaskFlag[]           @relation("FlagSubject")
+  analyticsPeriods    AnalyticsPeriod[]
   appraisalEvidence   AppraisalEvidence[]
   shadowScores        ShadowScore[]
   commandCentreEvents CommandCentreEvent[] @relation("CommandCentreSubject")
@@ -92,8 +98,8 @@ model Employee {
 
 /// Cached read copy of Frappe HR's Department doctype.
 model Department {
-  id                 String   @id @default(cuid())
-  frappeDepartmentId String   @unique
+  id                 String @id @default(cuid())
+  frappeDepartmentId String @unique
   name               String
 
   parentDepartmentId String?
@@ -113,11 +119,11 @@ model Department {
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  @@map("departments")
-
   commandCentreEvents CommandCentreEvent[]
 
   handoversInbound Handover[] @relation("HandoverDestination")
+
+  @@map("departments")
 }
 
 // =============================================================================
@@ -147,7 +153,7 @@ model User {
   employeeId String?   @unique
   employee   Employee? @relation(fields: [employeeId], references: [id])
 
-  /// True when no Frappe HR employee matched this user's email. Surfaced to
+  /// True when no employee matched this user's employee code. Surfaced to
   /// admins rather than left silent - an unlinked user and a user with no work
   /// assigned look identical otherwise (decision S-05).
   isEmployeeUnlinked Boolean @default(false)
@@ -204,7 +210,7 @@ enum WorkPulseRole {
 /// who changed what, from what to what, when, and why. No application-layer
 /// role - including SYSTEM_ADMIN - gets a delete path on this table.
 model AuditLog {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   entityType String // e.g. "Task", "Project", "Employee" (Phase 1+)
   entityId   String
   action     String // e.g. "created", "status_changed", "reassigned"
@@ -213,7 +219,7 @@ model AuditLog {
   beforeJson Json?
   afterJson  Json?
   reason     String? // mandatory for reassignment/reopen/cancel per BRS business rules
-  createdAt  DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   @@index([entityType, entityId])
   @@index([createdAt])
@@ -383,20 +389,20 @@ model DeskCardActivity {
 
   // ---- recurrence ----
   /// Null means a one-off obligation that generates no Tasks on a schedule.
-  frequency       RecurrenceFrequency?
+  frequency        RecurrenceFrequency?
   /// "every N" of the frequency unit. 1 = every day/week/month.
-  interval        Int                  @default(1)
+  interval         Int                  @default(1)
   /// Weekly: ISO days, 1=Mon .. 7=Sun.
-  daysOfWeek      Int[]
+  daysOfWeek       Int[]
   /// Monthly/quarterly/yearly: day of month. 31 clamps to month end.
-  dayOfMonth      Int?
+  dayOfMonth       Int?
   /// Working days before the due date at which the instance is generated.
-  leadTimeDays    Int                  @default(0)
-  startDate       DateTime?
-  endDate         DateTime?
+  leadTimeDays     Int                  @default(0)
+  startDate        DateTime?
+  endDate          DateTime?
   /// Pause stops future generation without affecting generated instances
   /// (TM-FR-002). Templates are paused, never deleted, while instances are open.
-  isPaused        Boolean              @default(false)
+  isPaused         Boolean              @default(false)
   /// Due date of the most recent instance generated, so the scheduler is
   /// idempotent and a restart cannot double-generate.
   lastGeneratedFor DateTime?
@@ -494,8 +500,8 @@ model Task {
   decision   Decision? @relation(fields: [decisionId], references: [id])
 
   /// Tasks this one must wait for, and tasks waiting on this one.
-  dependsOn  TaskDependency[] @relation("DependencySuccessor")
-  blocks     TaskDependency[] @relation("DependencyPredecessor")
+  dependsOn TaskDependency[] @relation("DependencySuccessor")
+  blocks    TaskDependency[] @relation("DependencyPredecessor")
 
   dueDate          DateTime
   estimatedMinutes Int?
@@ -537,7 +543,7 @@ model Task {
   // retroactively hide history.
   isConfidential Boolean @default(false)
 
-  flags TaskFlag[]
+  flags               TaskFlag[]
   commandCentreEvents CommandCentreEvent[]
   slaPredictions      SlaPrediction[]
 
@@ -714,7 +720,7 @@ model EscalationRule {
   slaDefinitionId String
   slaDefinition   SlaDefinition @relation(fields: [slaDefinitionId], references: [id], onDelete: Cascade)
 
-  level Int
+  level            Int
   /// Percentage of the resolution SLA at which this level fires. 100 = at breach.
   thresholdPercent Int
 
@@ -747,9 +753,9 @@ model TaskEscalation {
   taskId String
   task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
-  level            Int
-  thresholdPercent Int
-  notifyTarget     EscalationTarget
+  level              Int
+  thresholdPercent   Int
+  notifyTarget       EscalationTarget
   notifiedEmployeeId String?
 
   /// Minutes of ACTIVE time when this fired - paused time already excluded.
@@ -918,9 +924,9 @@ model Handover {
 }
 
 model HandoverItem {
-  id          String   @id @default(cuid())
-  handoverId  String
-  handover    Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  handoverId String
+  handover   Handover @relation(fields: [handoverId], references: [id], onDelete: Cascade)
 
   itemType    HandoverItemType
   /// Id of the underlying task, desk card, assignment and so on.
@@ -946,7 +952,6 @@ model HandoverItem {
   @@index([handoverId, isBlocking])
   @@map("handover_items")
 }
-
 
 // =============================================================================
 // PHASE 4: Teams, Projects, dependencies, RACI and DACI
@@ -1062,10 +1067,10 @@ model Project {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  commandCentreEvents CommandCentreEvent[]
+
   @@index([status])
   @@map("projects")
-
-  commandCentreEvents CommandCentreEvent[]
 }
 
 /// TM-FR-019: a Team can support several Projects at once.
@@ -1256,9 +1261,9 @@ model Policy {
   approverEmployeeId String
   approver           Employee @relation("PolicyApprover", fields: [approverEmployeeId], references: [id])
 
-  reviewFrequencyMonths Int @default(12)
+  reviewFrequencyMonths Int       @default(12)
   /// Working days before the review date at which a review task is generated.
-  reviewLeadTimeDays    Int @default(20)
+  reviewLeadTimeDays    Int       @default(20)
   nextReviewDate        DateTime?
 
   status PolicyStatus @default(DRAFT)
@@ -1385,8 +1390,8 @@ model WorkflowStep {
   workflowVersionId String
   workflowVersion   WorkflowVersion @relation(fields: [workflowVersionId], references: [id], onDelete: Cascade)
 
-  position Int
-  title    String
+  position        Int
+  title           String
   /// Structured rich text (TipTap JSON), not HTML, so steps stay queryable and
   /// diffable between versions rather than being an opaque blob.
   contentJson     Json?
@@ -1546,7 +1551,6 @@ model TaskStatusHistory {
   @@map("task_status_history")
 }
 
-
 // ===========================================================================
 // Phase 7 - CEO Command Centre, HR appraisal evidence, SLA-breach prediction
 // ===========================================================================
@@ -1664,8 +1668,8 @@ model AppraisalEvidence {
 
   /// Flags that were still open when the snapshot was taken. HR must see that
   /// work was excluded, not silently receive a smaller denominator.
-  openFlagCount      Int @default(0)
-  excludedTaskCount  Int @default(0)
+  openFlagCount     Int @default(0)
+  excludedTaskCount Int @default(0)
 
   /// Who generated it and when. Pulling a person's performance evidence is
   /// itself an auditable act.

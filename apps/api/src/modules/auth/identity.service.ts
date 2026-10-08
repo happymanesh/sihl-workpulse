@@ -46,7 +46,7 @@ export class IdentityService {
 
     const roleCodes = await this.directory.findRoleCodes(session.userUid);
     const mappedRoles = await this.mapRoles(roleCodes);
-    const user = await this.upsertUser(synapseUser.uid, synapseUser.username, synapseUser.email);
+    const user = await this.upsertUser(synapseUser.uid, synapseUser.username, synapseUser.employeeCode);
 
     // Access requires an explicit grant. There is deliberately NO fallback role
     // for users whose Synapse roles map to nothing.
@@ -88,18 +88,24 @@ export class IdentityService {
 
   /**
    * Lazily provisions the local join row on first sign-in, and re-attempts the
-   * Frappe HR link each time it is still missing - an employee record created
+   * employee link each time it is still missing - an employee record created
    * after the user's first login should link on their next request rather than
    * needing an admin to intervene.
+   *
+   * Links by EMPLOYEE CODE (Synapse user_details.employee_code = Employee.employeeCode),
+   * never by email: team-shared mailboxes mean one address can belong to several
+   * people, and an email match would hand one person another's work (2026-10-07).
    */
-  private async upsertUser(uid: number, username: string, email: string | null) {
-    const employee = email
-      ? await prisma.employee.findUnique({ where: { email }, select: { id: true } })
+  private async upsertUser(uid: number, username: string, employeeCode: string | null) {
+    const employee = employeeCode
+      ? await prisma.employee.findUnique({ where: { employeeCode }, select: { id: true } })
       : null;
 
-    if (!employee && email) {
+    if (!employee) {
       this.logger.warn(
-        `Synapse user ${username} (uid ${uid}) has no Frappe HR employee for email ${email} - flagged unlinked`,
+        employeeCode
+          ? `Synapse user ${username} (uid ${uid}) has no employee with code ${employeeCode} - flagged unlinked`
+          : `Synapse user ${username} (uid ${uid}) has no employee code in Synapse - flagged unlinked`,
       );
     }
 

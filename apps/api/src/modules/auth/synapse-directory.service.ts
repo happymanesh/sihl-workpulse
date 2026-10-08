@@ -14,6 +14,8 @@ export interface SynapseUserRecord {
   username: string;
   fullName: string;
   email: string | null;
+  /** The key workPulse links a user to an Employee by (never email). */
+  employeeCode: string | null;
   isActive: boolean;
 }
 
@@ -57,8 +59,10 @@ export class SynapseDirectoryService implements OnModuleDestroy {
    * so that deactivating someone takes effect immediately rather than at token
    * expiry; workPulse must match that or it becomes the weak link.
    *
-   * Returns null when the user does not exist or the directory is unreachable -
-   * the caller treats null as "not authorised", so an outage fails closed.
+   * Returns null when the user does not exist, is inactive, is SUSPENDED, or the
+   * directory is unreachable - the caller treats null as "not authorised", so an
+   * outage fails closed. Suspension mirrors Synapse's accountBlock(): a suspended
+   * Synapse user (e.g. frozen in HR) must not keep working here either.
    */
   async findActiveUser(userUid: number): Promise<SynapseUserRecord | null> {
     if (!this.pool) return null;
@@ -68,20 +72,23 @@ export class SynapseDirectoryService implements OnModuleDestroy {
         username: string;
         full_name: string;
         email: string | null;
+        employee_code: string | null;
         is_active: boolean;
+        is_suspended: boolean;
       }>(
-        `SELECT uid, username, full_name, email, is_active
+        `SELECT uid, username, full_name, email, employee_code, is_active, is_suspended
            FROM user_details
           WHERE uid = $1`,
         [userUid],
       );
       const row = rows[0];
-      if (!row || !row.is_active) return null;
+      if (!row || !row.is_active || row.is_suspended) return null;
       return {
         uid: row.uid,
         username: row.username,
         fullName: row.full_name,
         email: row.email,
+        employeeCode: row.employee_code,
         isActive: row.is_active,
       };
     } catch (err) {

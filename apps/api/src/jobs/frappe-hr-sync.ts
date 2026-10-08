@@ -1,9 +1,10 @@
 import { prisma } from "@workpulse/db";
 import type { FrappeHrSyncResult } from "@workpulse/shared-types";
-import { createFrappeHrClient, type FrappeHrClient } from "./frappe-hr-client";
+import { createFrappeHrClient, hrSource, type FrappeHrClient } from "./frappe-hr-client";
 
 /**
- * Runs one Frappe HR -> workPulse sync pass. Idempotent and safe to run on
+ * Runs one HR -> workPulse sync pass. The source is chosen by HR_SOURCE (default
+ * synapse; see createFrappeHrClient) - the job name keeps "frappe" for history. Idempotent and safe to run on
  * a schedule (default: every 2 hours, see FRAPPE_SYNC_CRON in .env.example)
  * or manually via `npm run sync:frappe-hr`.
  *
@@ -60,9 +61,9 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
         : null;
 
       await prisma.employee.upsert({
-        where: { frappeEmployeeId: emp.employeeId },
+        where: { employeeCode: emp.employeeId },
         create: {
-          frappeEmployeeId: emp.employeeId,
+          employeeCode: emp.employeeId,
           name: emp.fullName,
           email: emp.email,
           designation: emp.designation,
@@ -85,11 +86,11 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
     for (const emp of rawEmployees) {
       if (!emp.managerEmployeeId) continue;
       const manager = await prisma.employee.findUnique({
-        where: { frappeEmployeeId: emp.managerEmployeeId },
+        where: { employeeCode: emp.managerEmployeeId },
       });
       if (manager) {
         await prisma.employee.update({
-          where: { frappeEmployeeId: emp.employeeId },
+          where: { employeeCode: emp.employeeId },
           data: { managerId: manager.id },
         });
       }
@@ -101,7 +102,7 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
   return {
     startedAt,
     finishedAt: new Date().toISOString(),
-    mode: (process.env.FRAPPE_SYNC_MODE as "mock" | "live") ?? "mock",
+    mode: hrSource() === "synapse" ? "synapse" : ((process.env.FRAPPE_SYNC_MODE as "mock" | "live") ?? "mock"),
     employeesSynced,
     departmentsSynced,
     errors,

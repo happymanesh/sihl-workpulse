@@ -23,8 +23,11 @@ export interface HealthStatus {
 
 export interface EmployeeSummary {
   id: string;
+  /** The employee code — what Synapse users are linked by. */
+  employeeCode: string;
   name: string;
-  email: string;
+  /** Optional and not unique: team-shared mailboxes and staff without email exist. */
+  email: string | null;
   designation: string | null;
   departmentName: string | null;
   isActive: boolean;
@@ -51,7 +54,8 @@ export type WorkPulseRoleName =
 export interface FrappeHrSyncResult {
   startedAt: string;
   finishedAt: string;
-  mode: "mock" | "live";
+  /** "synapse" when HR_SOURCE=synapse; otherwise the Frappe mode. */
+  mode: "mock" | "live" | "synapse";
   employeesSynced: number;
   departmentsSynced: number;
   errors: string[];

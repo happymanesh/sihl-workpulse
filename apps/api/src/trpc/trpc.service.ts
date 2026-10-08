@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import {
   ApprovalStatus,
   Complexity,
+  PolicyStatus,
   HandoverItemDisposition,
   HandoverReason,
   WorkPulseRole,
@@ -20,6 +21,7 @@ import { z } from "zod";
 import { CalendarService } from "../modules/capacity/calendar.service";
 import { CoverageService } from "../modules/governance/coverage.service";
 import { ManualService } from "../modules/governance/manual.service";
+import { ProcessService } from "../modules/governance/process.service";
 import { ProjectService } from "../modules/project/project.service";
 import { RoleGrantService } from "../modules/auth/role-grant.service";
 import { RoleMapService } from "../modules/auth/role-map.service";
@@ -74,6 +76,7 @@ export class TrpcService {
     private readonly workflowService: WorkflowService,
     private readonly coverageService: CoverageService,
     private readonly manualService: ManualService,
+    private readonly processService: ProcessService,
     private readonly projectService: ProjectService,
     private readonly slaService: SlaService,
     private readonly handoverService: HandoverService,
@@ -470,6 +473,93 @@ export class TrpcService {
       }),
 
       governance: router({
+        // --- Policies ---------------------------------------------------
+        policies: requireRoles(...MANAGEMENT_ROLES, "AUDIT").query(() =>
+          this.processService.listPolicies(),
+        ),
+
+        createPolicy: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              code: z.string().min(2).max(40),
+              name: z.string().min(2).max(200),
+              category: z.string().max(80).optional(),
+              ownerEmployeeId: z.string(),
+              approverEmployeeId: z.string(),
+              reviewFrequencyMonths: z.number().int().min(1).max(60).optional(),
+              reviewLeadTimeDays: z.number().int().min(0).max(180).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.processService.createPolicy(ctx.user, input)),
+
+        setPolicyStatus: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              policyId: z.string(),
+              status: z.nativeEnum(PolicyStatus),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.processService.setPolicyStatus(ctx.user, input.policyId, input.status, input.reason),
+          ),
+
+        // --- Processes --------------------------------------------------
+        processes: requireRoles(...MANAGEMENT_ROLES, "AUDIT").query(() =>
+          this.processService.listProcesses(),
+        ),
+
+        createProcess: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              code: z.string().min(2).max(40),
+              name: z.string().min(2).max(200),
+              controlObjective: z.string().max(1000).optional(),
+              ownerEmployeeId: z.string(),
+              policyId: z.string().optional(),
+              reviewFrequencyMonths: z.number().int().min(1).max(60).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.processService.createProcess(ctx.user, input)),
+
+        setProcessStatus: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              processId: z.string(),
+              status: z.nativeEnum(ApprovalStatus),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.processService.setProcessStatus(ctx.user, input.processId, input.status, input.reason),
+          ),
+
+        setProcessPolicy: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              processId: z.string(),
+              policyId: z.string().nullable(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.processService.setProcessPolicy(ctx.user, input.processId, input.policyId, input.reason),
+          ),
+
+        /** The link approval depends on, and which had no write path at all. */
+        setActivityProcess: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              activityId: z.string(),
+              processId: z.string().nullable(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.processService.setActivityProcess(ctx.user, input.activityId, input.processId, input.reason),
+          ),
+
+
         coverage: requireRoles(...MANAGEMENT_ROLES, "AUDIT").query(() => this.coverageService.allProcesses()),
 
         processCoverage: requireRoles(...MANAGEMENT_ROLES, "AUDIT")

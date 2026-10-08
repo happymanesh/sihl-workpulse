@@ -1,6 +1,11 @@
+import { SynapseHrClient } from "./synapse-hr-client";
+
 /**
- * Client for reading Employee/Department data out of Frappe HR. Two
- * implementations:
+ * Client for reading Employee/Department data out of an HR source. Since
+ * 2026-10-07 the default source is Synapse (SynapseHrClient, synapse-hr-client.ts:
+ * Spine HR as curated into Synapse's hr_employee, plus Synapse users that carry an
+ * employee code). Select with HR_SOURCE=synapse|frappe; createFrappeHrClient()
+ * below does the choosing. The Frappe implementations:
  *
  *  - MockFrappeHrClient: generates realistic fixture data. Default while
  *    FRAPPE_SYNC_MODE=mock, so the rest of workPulse can be built and
@@ -15,9 +20,11 @@
  */
 
 export interface RawFrappeEmployee {
-  employeeId: string; // Frappe HR's "name" field (its primary key for Employee)
+  /** The employee code: Employee.employeeCode, and the key Synapse users link by. */
+  employeeId: string;
   fullName: string;
-  email: string;
+  /** Not an identifier: team-shared mailboxes exist, and some staff have none. */
+  email: string | null;
   designation: string | null;
   departmentId: string | null;
   managerEmployeeId: string | null;
@@ -111,21 +118,26 @@ const MOCK_EMPLOYEES: RawFrappeEmployee[] = [
 
 export class MockFrappeHrClient implements FrappeHrClient {
   async fetchEmployees(): Promise<RawFrappeEmployee[]> {
-    // Local-dev affordance. Employees link to Synapse users by email, and the
-    // fixture addresses (@sihl.example) match nobody in a real Synapse, so
+    // Local-dev affordance. Employees link to Synapse users by employee code,
+    // and the fixture codes (EMP-0001...) match nobody in a real Synapse, so
     // "My tasks" and "My desk card" would always be empty when demoing.
     //
-    // Setting FRAPPE_MOCK_LINK_EMAIL to your own Synapse address re-points the
-    // first fixture employee at it, so the whole loop - desk card, generated
-    // task, completion - is visible under one login.
+    // Setting FRAPPE_MOCK_LINK_CODE to your own Synapse user's employee code
+    // re-points the first fixture employee at it, so the whole loop - desk card,
+    // generated task, completion - is visible under one login. Managers that
+    // pointed at the old fixture code follow it.
     //
-    // Deliberately an env var rather than an edit to the fixture: a personal
-    // address does not belong in the repository. Ignored entirely once
-    // FRAPPE_SYNC_MODE=live, where real employees come from Frappe HR.
-    const linkEmail = process.env.FRAPPE_MOCK_LINK_EMAIL?.trim();
-    if (!linkEmail) return MOCK_EMPLOYEES;
+    // Deliberately an env var rather than an edit to the fixture. Ignored
+    // entirely outside mock mode.
+    const linkCode = process.env.FRAPPE_MOCK_LINK_CODE?.trim();
+    if (!linkCode) return MOCK_EMPLOYEES;
 
-    return MOCK_EMPLOYEES.map((e, i) => (i === 0 ? { ...e, email: linkEmail } : e));
+    const original = MOCK_EMPLOYEES[0].employeeId;
+    return MOCK_EMPLOYEES.map((e, i) => ({
+      ...e,
+      employeeId: i === 0 ? linkCode : e.employeeId,
+      managerEmployeeId: e.managerEmployeeId === original ? linkCode : e.managerEmployeeId,
+    }));
   }
 
   async fetchDepartments(): Promise<RawFrappeDepartment[]> {
@@ -164,7 +176,19 @@ export class LiveFrappeHrClient implements FrappeHrClient {
   }
 }
 
+/** Which HR source the sync reads. Default: Synapse (decided 2026-10-07). */
+export function hrSource(): "synapse" | "frappe" {
+  return process.env.HR_SOURCE === "frappe" ? "frappe" : "synapse";
+}
+
 export function createFrappeHrClient(): FrappeHrClient {
+  if (hrSource() === "synapse") {
+    const url = process.env.SYNAPSE_DATABASE_URL;
+    if (!url) {
+      throw new Error("HR_SOURCE=synapse (the default) requires SYNAPSE_DATABASE_URL. Set HR_SOURCE=frappe to use Frappe HR.");
+    }
+    return new SynapseHrClient(url);
+  }
   const mode = process.env.FRAPPE_SYNC_MODE ?? "mock";
   if (mode === "live") {
     const baseUrl = process.env.FRAPPE_BASE_URL;

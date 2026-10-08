@@ -42,6 +42,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "At risk", href: "/at-risk", icon: TriangleAlert },
       { label: "Appraisal evidence", href: "/appraisal", icon: FileSpreadsheet },
       { label: "Controls", href: "/governance", icon: ShieldCheck },
+      { label: "Policies & processes", href: "/governance/controls", icon: ShieldCheck },
       { label: "Desk cards", href: "/desk-cards", icon: Layers },
     ],
   },

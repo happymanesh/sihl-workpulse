@@ -202,7 +202,7 @@ function actor(roles: string[] = ["SYSTEM_ADMIN"], employeeId: string | null = n
         sourceSystemCode: `${RUN}-DESK`,
         sourceReference: "TICKET-8823",
         title: `${RUN} Escalated ticket - login issue`,
-        assigneeEmail: emp!.email,
+        assigneeEmail: emp!.email ?? undefined,
       });
       taskIds.push(r.task.id);
       expect(r.created).toBe(true);
@@ -218,7 +218,7 @@ function actor(roles: string[] = ["SYSTEM_ADMIN"], employeeId: string | null = n
         sourceSystemCode: `${RUN}-DESK`,
         sourceReference: "TICKET-8823",
         title: "Different title, same ticket",
-        assigneeEmail: emp!.email,
+        assigneeEmail: emp!.email ?? undefined,
       });
       expect(again.created).toBe(false);
       expect(await prisma.task.count({ where: { sourceReference: "TICKET-8823" } })).toBe(1);

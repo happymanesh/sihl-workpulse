@@ -23,6 +23,7 @@ export class EmployeeService {
 
     return employees.map((e) => ({
       id: e.id,
+      employeeCode: e.employeeCode,
       name: e.name,
       email: e.email,
       designation: e.designation,
@@ -36,6 +37,7 @@ export class EmployeeService {
     if (!e) return null;
     return {
       id: e.id,
+      employeeCode: e.employeeCode,
       name: e.name,
       email: e.email,
       designation: e.designation,

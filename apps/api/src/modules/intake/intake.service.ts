@@ -69,7 +69,13 @@ export class IntakeService {
       event.taskTypeCode
         ? prisma.taskType.findUnique({ where: { code: event.taskTypeCode } })
         : prisma.taskType.findUnique({ where: { code: "OPERATIONAL" } }),
-      event.assigneeEmail ? prisma.employee.findUnique({ where: { email: event.assigneeEmail } }) : null,
+      // Email is no longer unique (team-shared mailboxes): only an unambiguous match
+      // routes to a person; otherwise the department queue below takes it.
+      event.assigneeEmail
+        ? prisma.employee
+            .findMany({ where: { email: event.assigneeEmail, isActive: true }, take: 2 })
+            .then((matches) => (matches.length === 1 ? matches[0] : null))
+        : null,
       event.departmentName ? prisma.department.findFirst({ where: { name: event.departmentName } }) : null,
     ]);
 
