@@ -115,6 +115,7 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                 <th className="label-caps px-4 py-2.5">Activity</th>
                 <th className="label-caps px-4 py-2.5">Type</th>
                 <th className="label-caps px-4 py-2.5">Recurrence</th>
+                <th className="label-caps px-4 py-2.5">Serves</th>
                 <th className="label-caps px-4 py-2.5 text-right">Effort</th>
                 <th className="label-caps px-4 py-2.5">Priority</th>
                 <th className="label-caps px-4 py-2.5">Status</th>
@@ -130,6 +131,15 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                     {a.frequency
                       ? `${a.interval > 1 ? `Every ${a.interval} ` : ""}${a.frequency.toLowerCase()}${a.leadTimeDays ? ` · ${a.leadTimeDays}d lead` : ""}`
                       : "One-off"}
+                  </td>
+                  <td className="px-4 py-2.5 text-xs">
+                    {a.process ? (
+                      <span className="tabular text-muted-foreground" title={a.process.name}>
+                        {a.process.code}
+                      </span>
+                    ) : (
+                      <Badge tone="warning">no control</Badge>
+                    )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{a.estimatedMinutes}m</td>
                   <td className="px-4 py-2.5">
@@ -168,7 +178,7 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
               ))}
               {c.activities.length === 0 && (
                 <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-xs text-muted-foreground">
+                  <td colSpan={8} className="px-4 py-10 text-center text-xs text-muted-foreground">
                     No activities yet. Add the obligations this role carries.
                   </td>
                 </tr>
@@ -290,10 +300,23 @@ function AddActivity({
     daysOfWeek: [] as number[],
     dayOfMonth: 1,
     leadTimeDays: 0,
+    processId: "",
   });
 
+  // The control this obligation serves. An activity cannot be approved
+  // without one, so asking here saves a trip to /governance/controls and a
+  // confusing refusal later.
+  const processes = trpc.governance.processes.useQuery();
+  const linkProcess = trpc.governance.setActivityProcess.useMutation({ onError });
+
   const create = trpc.activity.create.useMutation({
-    onSuccess: () => {
+    onSuccess: async (activity) => {
+      // Two calls rather than one because activity.create does not take a
+      // processId - changing its input would ripple through the recurrence
+      // tests. The link is audited separately either way.
+      if (f.processId) {
+        await linkProcess.mutateAsync({ activityId: activity.id, processId: f.processId });
+      }
       setOpen(false);
       setF({ ...f, title: "", description: "" });
       onDone();
@@ -320,6 +343,31 @@ function AddActivity({
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Title" htmlFor="at" required className="sm:col-span-2">
             <Input id="at" value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} placeholder="Monthly SEBI compliance filing" />
+          </Field>
+
+          <Field
+            label="Serves process"
+            htmlFor="apr"
+            hint="Required before this activity can be approved"
+            className="sm:col-span-2"
+          >
+            <Select id="apr" value={f.processId} onChange={(e) => setF({ ...f, processId: e.target.value })}>
+              <option value="">Choose the control this work serves…</option>
+              {(processes.data ?? [])
+                .filter((pr) => pr.status !== "RETIRED")
+                .map((pr) => (
+                  <option key={pr.id} value={pr.id}>
+                    {pr.code} — {pr.name}
+                    {pr.status !== "APPROVED" ? ` (${pr.status.toLowerCase()})` : ""}
+                  </option>
+                ))}
+            </Select>
+            {(processes.data ?? []).length === 0 && (
+              <p className="mt-1 text-2xs text-warning">
+                No processes exist yet. Create one under Policies &amp; processes first — an activity
+                cannot be approved until it serves a named control.
+              </p>
+            )}
           </Field>
 
           <Field label="Task type" htmlFor="att" required hint="Controls verification, evidence and maker-checker">

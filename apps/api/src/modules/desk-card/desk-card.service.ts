@@ -64,7 +64,13 @@ export class DeskCardService {
         holder: { select: { id: true, name: true, email: true, designation: true } },
         activities: {
           orderBy: [{ priority: "asc" }, { title: "asc" }],
-          include: { taskType: { select: { id: true, code: true, name: true } } },
+          include: {
+            taskType: { select: { id: true, code: true, name: true } },
+            // The control each obligation serves. Without it the detail page
+            // cannot show why the work exists, which is the whole point of
+            // requiring the link before approval.
+            process: { select: { id: true, code: true, name: true, status: true } },
+          },
         },
         holderHistory: {
           orderBy: { fromDate: "desc" },
