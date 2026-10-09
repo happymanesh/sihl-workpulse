@@ -37,6 +37,9 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
   const transfer = trpc.deskCard.transferHolder.useMutation({ onSuccess: refresh, onError });
   const setActivityStatus = trpc.activity.setStatus.useMutation({ onSuccess: refresh, onError });
   const setPaused = trpc.activity.setPaused.useMutation({ onSuccess: refresh, onError });
+  // For the inline "serves" picker on each activity row.
+  const processes = trpc.governance.processes.useQuery();
+  const linkProcess = trpc.governance.setActivityProcess.useMutation({ onSuccess: refresh, onError });
 
   if (card.isLoading) return <div className="h-40 animate-pulse rounded-lg bg-muted" />;
 
@@ -133,12 +136,31 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                       : "One-off"}
                   </td>
                   <td className="px-4 py-2.5 text-xs">
-                    {a.process ? (
+                    {/* Editable in place: an activity created without a control
+                        had no way to acquire one, and approval is refused until
+                        it does. */}
+                    {a.status === "APPROVED" && a.process ? (
                       <span className="tabular text-muted-foreground" title={a.process.name}>
                         {a.process.code}
                       </span>
                     ) : (
-                      <Badge tone="warning">no control</Badge>
+                      <select
+                        aria-label={`Control served by ${a.title}`}
+                        className="h-7 w-44 rounded-md border border-input bg-card px-1.5 text-xs"
+                        value={a.process?.id ?? ""}
+                        onChange={(e) =>
+                          linkProcess.mutate({ activityId: a.id, processId: e.target.value || null })
+                        }
+                      >
+                        <option value="">No control</option>
+                        {(processes.data ?? [])
+                          .filter((pr) => pr.status !== "RETIRED")
+                          .map((pr) => (
+                            <option key={pr.id} value={pr.id}>
+                              {pr.code}
+                            </option>
+                          ))}
+                      </select>
                     )}
                   </td>
                   <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{a.estimatedMinutes}m</td>
@@ -157,6 +179,11 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                         <Button
                           size="sm"
                           variant="outline"
+                          // Approval is refused without a control, so offering
+                          // the button and letting the server say no just
+                          // teaches people the screen is unreliable.
+                          disabled={!a.process}
+                          title={a.process ? undefined : "Choose the control this activity serves first"}
                           onClick={() => setActivityStatus.mutate({ activityId: a.id, status: "APPROVED" })}
                         >
                           Approve
