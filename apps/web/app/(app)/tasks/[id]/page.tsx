@@ -12,16 +12,25 @@ import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 
 /** Transitions a user can drive from the detail screen, and what to call them. */
-const ACTIONS: { to: TaskStatus; label: string; variant?: "primary" | "outline" | "danger"; needsReason?: boolean }[] = [
+/**
+ * Labels only. Which of these are legal from the current status, and which
+ * demand a written reason, both come from the API's transition map
+ * (reference.taskTransitions) - the same table the service enforces. Keeping a
+ * second copy of those rules here is how the two drift apart.
+ */
+const ACTIONS: { to: TaskStatus; label: string; variant?: "primary" | "outline" | "danger" }[] = [
   { to: "ACCEPTED", label: "Accept" },
   { to: "IN_PROGRESS", label: "Start" },
-  { to: "BLOCKED", label: "Block", variant: "outline", needsReason: true },
+  { to: "BLOCKED", label: "Block", variant: "outline" },
   { to: "PENDING_REVIEW", label: "Send for review", variant: "outline" },
   { to: "COMPLETED", label: "Mark complete" },
   { to: "VERIFIED", label: "Verify" },
   { to: "CLOSED", label: "Close" },
-  { to: "REJECTED", label: "Reject", variant: "danger", needsReason: true },
-  { to: "REOPENED", label: "Reopen", variant: "outline", needsReason: true },
+  { to: "REJECTED", label: "Reject", variant: "danger" },
+  { to: "REOPENED", label: "Reopen", variant: "outline" },
+  { to: "ON_HOLD", label: "Put on hold", variant: "outline" },
+  { to: "DEFERRED", label: "Defer", variant: "outline" },
+  { to: "CANCELLED", label: "Cancel", variant: "danger" },
 ];
 
 export default function TaskDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -29,6 +38,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const utils = trpc.useUtils();
   const query = trpc.task.byId.useQuery({ id });
   const sla = trpc.sla.forTask.useQuery({ taskId: id });
+  // The lifecycle rules, straight from the API. Offering a move the server
+  // will refuse teaches people to distrust the buttons.
+  const transitions = trpc.reference.taskTransitions.useQuery();
 
   const [pending, setPending] = useState<TaskStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -72,6 +84,16 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const status = task.status as TaskStatus;
   const checklistOutstanding = task.checklistItems.filter((i) => !i.isDone && !i.waivedReason).length;
   const sideState = ["BLOCKED", "REJECTED", "ON_HOLD", "DEFERRED", "CANCELLED", "REOPENED"].includes(status);
+
+  // What the server says is legal from here, in the order ACTIONS declares so
+  // the buttons do not jump around as the task progresses. reasonRequired
+  // comes from the same place, rather than being restated in this file.
+  const legal = transitions.data?.allowed[status] ?? [];
+  const reasonRequired = transitions.data?.reasonRequired ?? [];
+  const available = ACTIONS.filter((a) => legal.includes(a.to)).map((a) => ({
+    ...a,
+    needsReason: reasonRequired.includes(a.to),
+  }));
 
   function submit(to: TaskStatus, needsReason: boolean) {
     if (needsReason && !reason.trim()) {
@@ -232,7 +254,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           )}
 
           <div className="flex flex-wrap gap-2">
-            {ACTIONS.map((a) => (
+            {available.map((a) => (
               <Button
                 key={a.to}
                 size="sm"
@@ -243,10 +265,20 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 {a.label}
               </Button>
             ))}
+            {transitions.isLoading && (
+              <span className="text-2xs text-muted-foreground">Loading what you can do…</span>
+            )}
+            {!transitions.isLoading && available.length === 0 && (
+              <span className="text-2xs text-muted-foreground">
+                Nothing further to do — {task.status.replace(/_/g, " ").toLowerCase()} is the end of the line for
+                this task.
+              </span>
+            )}
           </div>
           <p className="text-2xs text-muted-foreground">
-            Only transitions your role and the task&apos;s current state permit will succeed — the rules are enforced
-            by the API, and an invalid move explains why.
+            Only moves that are legal from {task.status.replace(/_/g, " ").toLowerCase()} are shown. Your role is
+            checked when you act — the API is still the authority, this just stops offering you what it would
+            refuse.
           </p>
         </CardContent>
       </Card>
