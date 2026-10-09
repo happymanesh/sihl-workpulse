@@ -185,6 +185,7 @@ export class TrpcService {
               description: z.string().max(2000).optional(),
               taskTypeId: z.string(),
               priority: z.nativeEnum(Priority),
+              reviewerEmployeeId: z.string().nullish(),
               estimatedMinutes: z.number().int().positive(),
               frequency: z.nativeEnum(RecurrenceFrequency).nullish(),
               interval: z.number().int().positive().default(1),

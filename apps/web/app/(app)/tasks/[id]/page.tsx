@@ -41,6 +41,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   // The lifecycle rules, straight from the API. Offering a move the server
   // will refuse teaches people to distrust the buttons.
   const transitions = trpc.reference.taskTransitions.useQuery();
+  // For the blocking-owner picker.
+  const staff = trpc.employee.list.useQuery({ activeOnly: true });
 
   const [pending, setPending] = useState<TaskStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -235,15 +237,35 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 placeholder="Why?"
               />
               {pending === "BLOCKED" && (
-                <input
+                <select
                   value={blockingOwner}
                   onChange={(e) => setBlockingOwner(e.target.value)}
-                  placeholder="Employee ID who owns resolving this"
                   className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm"
-                />
+                >
+                  {/* A name, not an employee id. Nobody blocked at 5pm is going
+                      to look up a colleague's internal id to say who they are
+                      waiting on - they will skip the field and the block
+                      becomes untraceable. */}
+                  <option value="">Who owns unblocking this?</option>
+                  {(staff.data ?? []).map((e) => (
+                    <option key={e.id} value={e.id}>
+                      {e.name}
+                      {e.departmentName ? ` — ${e.departmentName}` : ""}
+                      {e.designation ? ` (${e.designation})` : ""}
+                    </option>
+                  ))}
+                </select>
               )}
               <div className="flex gap-2">
-                <Button size="sm" onClick={() => submit(pending, false)} disabled={!reason.trim() || transition.isPending}>
+                <Button
+                  size="sm"
+                  onClick={() => submit(pending, false)}
+                  disabled={
+                    !reason.trim() ||
+                    transition.isPending ||
+                    (pending === "BLOCKED" && !blockingOwner)
+                  }
+                >
                   Confirm
                 </Button>
                 <Button size="sm" variant="ghost" onClick={() => { setPending(null); setReason(""); }}>

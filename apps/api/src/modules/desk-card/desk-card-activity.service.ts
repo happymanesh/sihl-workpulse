@@ -9,6 +9,7 @@ export interface CreateActivityInput {
   description?: string;
   taskTypeId: string;
   priority: Priority;
+  reviewerEmployeeId?: string | null;
   estimatedMinutes: number;
   frequency?: RecurrenceFrequency | null;
   interval?: number;
@@ -61,6 +62,7 @@ export class DeskCardActivityService {
         description: input.description?.trim(),
         taskTypeId: input.taskTypeId,
         priority: input.priority,
+        reviewerEmployeeId: input.reviewerEmployeeId ?? null,
         estimatedMinutes: input.estimatedMinutes,
         frequency: input.frequency ?? null,
         interval: input.interval ?? 1,
@@ -82,6 +84,7 @@ export class DeskCardActivityService {
         deskCardId: activity.deskCardId,
         title: activity.title,
         priority: activity.priority,
+        reviewerEmployeeId: activity.reviewerEmployeeId,
         estimatedMinutes: activity.estimatedMinutes,
         frequency: activity.frequency,
       },

@@ -80,19 +80,37 @@ const PERIOD_END = new Date("2026-03-31T23:59:59.999Z");
     flags = app.get(FlagService);
 
     const type = await prisma.taskType.findUnique({ where: { code: "OPERATIONAL" } });
-    const dept = await prisma.department.findFirst();
-    const emp = await prisma.employee.findFirst({ where: { isActive: true, departmentId: dept?.id } });
-    if (!type || !dept || !emp) throw new Error("fixtures missing");
+    if (!type) throw new Error("fixtures missing: OPERATIONAL task type");
     taskTypeId = type.id;
-    deptId = dept.id;
-    empId = emp.id;
 
-    const other = await prisma.department.findFirst({ where: { id: { not: dept.id } } });
-    otherDeptId = other?.id ?? dept.id;
-    const otherEmp = await prisma.employee.findFirst({
-      where: { isActive: true, departmentId: otherDeptId, id: { not: emp.id } },
+    // Pick a department that actually has active staff. With real HR data most
+    // departments have none - everyone in them has left - and the old lookup
+    // took the first department by insertion order regardless.
+    const withStaff = await prisma.employee.groupBy({
+      by: ["departmentId"],
+      where: { isActive: true, departmentId: { not: null } },
+      _count: { _all: true },
+      having: { departmentId: { _count: { gte: 1 } } },
+      orderBy: { departmentId: "asc" },
+      take: 2,
     });
-    otherDeptEmpId = otherEmp?.id ?? emp.id;
+    if (withStaff.length < 2) throw new Error("fixtures missing: need two departments with active staff");
+
+    deptId = withStaff[0].departmentId!;
+    otherDeptId = withStaff[1].departmentId!;
+
+    const emp = await prisma.employee.findFirst({ where: { isActive: true, departmentId: deptId } });
+    const otherEmp = await prisma.employee.findFirst({
+      where: { isActive: true, departmentId: otherDeptId },
+    });
+    if (!emp || !otherEmp) throw new Error("fixtures missing: active employees");
+
+    // These must be different people or the permission tests pass vacuously -
+    // listing your OWN flags is allowed, so a fallback to the same id turned
+    // "an employee cannot see someone else's flags" into a no-op.
+    empId = emp.id;
+    otherDeptEmpId = otherEmp.id;
+    if (empId === otherDeptEmpId) throw new Error("fixtures: need two distinct active employees");
   }, 60_000);
 
   afterAll(async () => {

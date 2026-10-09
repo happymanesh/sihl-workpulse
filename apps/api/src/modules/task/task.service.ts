@@ -172,6 +172,15 @@ export class TaskService {
       }
     }
 
+    // Sending work for review when nobody is named to review it parks the task
+    // where only a manager can rescue it - and the assignee cannot verify their
+    // own work, so for them it is simply stuck.
+    if (input.to === TaskStatus.PENDING_REVIEW && !task.reviewerEmployeeId) {
+      throw new BadRequestException(
+        "This task has no reviewer, so there is nobody to send it to. Assign one first.",
+      );
+    }
+
     if (input.to === TaskStatus.BLOCKED) {
       if (!input.blockedReason?.trim()) {
         throw new BadRequestException("A blocked task must record why it is blocked");
@@ -189,7 +198,15 @@ export class TaskService {
           status: input.to,
           startedAt: input.to === TaskStatus.IN_PROGRESS && !task.startedAt ? now : task.startedAt,
           completedAt: input.to === TaskStatus.COMPLETED ? now : task.completedAt,
-          verifiedAt: input.to === TaskStatus.VERIFIED ? now : task.verifiedAt,
+          // Reopening undoes the verification. Leaving verifiedAt set would
+          // have the screen still claim the work was checked, when what is
+          // being checked no longer exists in that form.
+          verifiedAt:
+            input.to === TaskStatus.VERIFIED
+              ? now
+              : input.to === TaskStatus.REOPENED
+                ? null
+                : task.verifiedAt,
           closedAt: input.to === TaskStatus.CLOSED ? now : task.closedAt,
           blockedReason: input.to === TaskStatus.BLOCKED ? input.blockedReason : null,
           blockingOwnerEmployeeId:

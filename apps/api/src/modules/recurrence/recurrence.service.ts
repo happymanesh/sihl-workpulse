@@ -173,6 +173,9 @@ export class RecurrenceService {
             deskCardActivityId: activity.id,
             workflowVersionId: pinnedVersion?.id,
             assigneeEmployeeId: holderId,
+            // Inherited so a recurring obligation never produces work that
+            // reaches Pending Review with nobody able to verify it.
+            reviewerEmployeeId: activity.reviewerEmployeeId,
             departmentId: activity.deskCard.departmentId,
             dueDate,
             estimatedMinutes: activity.estimatedMinutes,
@@ -208,6 +211,9 @@ export class RecurrenceService {
           deskCardActivityId: activity.id,
           workflowVersionId: pinnedVersion?.id ?? null,
           assigneeEmployeeId: holderId,
+          // Inherited so a recurring obligation never produces work that
+          // reaches Pending Review with nobody able to verify it.
+          reviewerEmployeeId: activity.reviewerEmployeeId,
           dueDate: toDayKey(dueDate),
         },
       });

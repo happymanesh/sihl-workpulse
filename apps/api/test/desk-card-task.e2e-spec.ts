@@ -59,7 +59,15 @@ d("Desk card and task lifecycle (e2e)", () => {
     tasks = app.get(TaskService);
 
     const dept = await prisma.department.findFirst();
-    const emps = await prisma.employee.findMany({ take: 2, orderBy: { name: "asc" } });
+    // isActive matters: the Frappe/Spine sync brings in leavers as well as
+    // current staff, and the service rightly refuses to assign work to one.
+    // Without the filter this picks whoever sorts first by name, which for
+    // real org data is frequently somebody who left.
+    const emps = await prisma.employee.findMany({
+      where: { isActive: true },
+      take: 2,
+      orderBy: { name: "asc" },
+    });
     const routine = await prisma.taskType.findUnique({ where: { code: "ROUTINE" } });
     const compliance = await prisma.taskType.findUnique({ where: { code: "COMPLIANCE" } });
 

@@ -58,6 +58,7 @@ model Employee {
   deskCardHistory DeskCardHolderHistory[]
   tasksAssigned   Task[]                  @relation("TaskAssignee")
   tasksReviewing  Task[]                  @relation("TaskReviewer")
+  activitiesReviewing DeskCardActivity[] @relation("ActivityReviewer")
   timeBlocks      TimeBlock[]             @relation("TimeBlockOwner")
   capacityBudget  CapacityBudget?
 
@@ -377,6 +378,13 @@ model DeskCardActivity {
   taskType   TaskType @relation(fields: [taskTypeId], references: [id])
 
   priority Priority @default(MEDIUM)
+
+  /// Who checks the work this activity generates. Tasks inherit it at
+  /// generation, so a recurring obligation does not produce work that reaches
+  /// Pending Review with nobody able to verify it. Null where the task type
+  /// needs no verification.
+  reviewerEmployeeId String?
+  reviewer           Employee? @relation("ActivityReviewer", fields: [reviewerEmployeeId], references: [id])
 
   /// Governed field. Set and amended only by the Department Head or System
   /// Admin, with a mandatory reason (Addendum 01 3.2b, TM-FR-076). It is also

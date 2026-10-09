@@ -301,12 +301,14 @@ function AddActivity({
     dayOfMonth: 1,
     leadTimeDays: 0,
     processId: "",
+    reviewerEmployeeId: "",
   });
 
   // The control this obligation serves. An activity cannot be approved
   // without one, so asking here saves a trip to /governance/controls and a
   // confusing refusal later.
   const processes = trpc.governance.processes.useQuery();
+  const staff = trpc.employee.list.useQuery({ activeOnly: true });
   const linkProcess = trpc.governance.setActivityProcess.useMutation({ onError });
 
   const create = trpc.activity.create.useMutation({
@@ -368,6 +370,27 @@ function AddActivity({
                 cannot be approved until it serves a named control.
               </p>
             )}
+          </Field>
+
+          <Field
+            label="Reviewer"
+            htmlFor="arev"
+            hint="Who checks this work. Without one it cannot be sent for review."
+          >
+            <Select
+              id="arev"
+              value={f.reviewerEmployeeId}
+              onChange={(e) => setF({ ...f, reviewerEmployeeId: e.target.value })}
+            >
+              <option value="">Nobody — no verification needed</option>
+              {(staff.data ?? []).map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.name}
+                  {e.departmentName ? ` — ${e.departmentName}` : ""}
+                  {e.designation ? ` (${e.designation})` : ""}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           <Field label="Task type" htmlFor="att" required hint="Controls verification, evidence and maker-checker">
@@ -483,6 +506,7 @@ function AddActivity({
                 description: f.description.trim() || undefined,
                 taskTypeId: f.taskTypeId,
                 priority: f.priority,
+                reviewerEmployeeId: f.reviewerEmployeeId || null,
                 estimatedMinutes: f.estimatedMinutes,
                 frequency: f.frequency || null,
                 interval: f.interval,
