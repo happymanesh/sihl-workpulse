@@ -253,6 +253,330 @@ export class ProjectService {
     return after;
   }
 
+  // ---- Milestones -------------------------------------------------------
+
+  /**
+   * Milestones, risks and the tasks in a project were readable but had no way
+   * in: the screen showed them, health was computed from them, and nothing
+   * could create one. A health figure derived from three things that are
+   * always empty reads GREEN forever and means nothing, which is worse than
+   * having no figure at all.
+   *
+   * Every write below recalculates health, because that is the whole point of
+   * recording them.
+   */
+  async addMilestone(
+    actor: AuthenticatedUser,
+    input: { projectId: string; name: string; targetDate: Date; position?: number },
+  ) {
+    this.assertManage(actor, "Adding a milestone");
+
+    const project = await prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: { id: true, code: true },
+    });
+    if (!project) throw new NotFoundException("Project not found");
+    if (!input.name.trim()) throw new BadRequestException("A milestone needs a name");
+
+    const last = await prisma.milestone.findFirst({
+      where: { projectId: input.projectId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+
+    const milestone = await prisma.milestone.create({
+      data: {
+        projectId: input.projectId,
+        name: input.name.trim(),
+        targetDate: input.targetDate,
+        position: input.position ?? (last ? last.position + 1 : 0),
+      },
+    });
+
+    await this.audit.record({
+      entityType: "Project",
+      entityId: input.projectId,
+      action: "milestone_added",
+      actorId: actor.id,
+      after: { milestoneId: milestone.id, name: milestone.name, targetDate: milestone.targetDate },
+      reason: `${project.code}: ${milestone.name}`,
+    });
+
+    await this.recalculateHealth(input.projectId);
+    return milestone;
+  }
+
+  /**
+   * Marking a milestone met records WHEN, not just that it happened, and
+   * un-marking is allowed because somebody will tick the wrong row. Both are
+   * audited, so "this was reported as met on the 3rd and un-met on the 9th" is
+   * answerable.
+   */
+  async setMilestoneComplete(actor: AuthenticatedUser, milestoneId: string, complete: boolean) {
+    this.assertManage(actor, "Completing a milestone");
+
+    const before = await prisma.milestone.findUnique({ where: { id: milestoneId } });
+    if (!before) throw new NotFoundException("Milestone not found");
+
+    const after = await prisma.milestone.update({
+      where: { id: milestoneId },
+      data: { completedAt: complete ? new Date() : null },
+    });
+
+    await this.audit.record({
+      entityType: "Project",
+      entityId: before.projectId,
+      action: complete ? "milestone_met" : "milestone_reopened",
+      actorId: actor.id,
+      before: { milestoneId, completedAt: before.completedAt },
+      after: { milestoneId, completedAt: after.completedAt },
+      reason: before.name,
+    });
+
+    await this.recalculateHealth(before.projectId);
+    return after;
+  }
+
+  /**
+   * Removing a milestone is planning, not evidence - a date that was never
+   * real can go. One that was already met cannot: reporting it as met and then
+   * deleting it would quietly rewrite what was reported.
+   */
+  async removeMilestone(actor: AuthenticatedUser, milestoneId: string) {
+    this.assertManage(actor, "Removing a milestone");
+
+    const milestone = await prisma.milestone.findUnique({ where: { id: milestoneId } });
+    if (!milestone) throw new NotFoundException("Milestone not found");
+    if (milestone.completedAt) {
+      throw new BadRequestException(
+        "This milestone has been reported as met, so it cannot be deleted. Re-open it first if that was wrong.",
+      );
+    }
+
+    await prisma.milestone.delete({ where: { id: milestoneId } });
+    await this.audit.record({
+      entityType: "Project",
+      entityId: milestone.projectId,
+      action: "milestone_removed",
+      actorId: actor.id,
+      before: { milestoneId, name: milestone.name, targetDate: milestone.targetDate },
+    });
+
+    await this.recalculateHealth(milestone.projectId);
+    return { id: milestoneId };
+  }
+
+  // ---- Risks and issues -------------------------------------------------
+
+  /**
+   * TM-FR-014. A blocking risk is not a label - it stops the project being
+   * completed until it is resolved, which is why raising one is an audited act
+   * rather than a note somebody typed in a status report.
+   */
+  async raiseRisk(
+    actor: AuthenticatedUser,
+    input: { projectId: string; title: string; description?: string; isBlocking?: boolean },
+  ) {
+    this.assertManage(actor, "Raising a risk");
+
+    const project = await prisma.project.findUnique({
+      where: { id: input.projectId },
+      select: { id: true, code: true },
+    });
+    if (!project) throw new NotFoundException("Project not found");
+    if (!input.title.trim()) throw new BadRequestException("A risk needs a title");
+
+    const risk = await prisma.projectRisk.create({
+      data: {
+        projectId: input.projectId,
+        title: input.title.trim(),
+        description: input.description?.trim() || null,
+        isBlocking: input.isBlocking ?? false,
+      },
+    });
+
+    await this.audit.record({
+      entityType: "Project",
+      entityId: input.projectId,
+      action: "risk_raised",
+      actorId: actor.id,
+      after: { riskId: risk.id, title: risk.title, isBlocking: risk.isBlocking },
+      reason: `${project.code}: ${risk.title}`,
+    });
+
+    await this.recalculateHealth(input.projectId);
+    return risk;
+  }
+
+  /** Escalating a risk to blocking, or standing it down, always with a reason. */
+  async setRiskBlocking(actor: AuthenticatedUser, riskId: string, isBlocking: boolean, reason: string) {
+    this.assertManage(actor, "Changing a risk");
+
+    const before = await prisma.projectRisk.findUnique({ where: { id: riskId } });
+    if (!before) throw new NotFoundException("Risk not found");
+    if (!reason?.trim()) {
+      throw new BadRequestException(
+        "Say why this is or is no longer blocking — a blocking risk stops the project closing, so the change needs to be explicable.",
+      );
+    }
+
+    const after = await prisma.projectRisk.update({ where: { id: riskId }, data: { isBlocking } });
+
+    await this.audit.record({
+      entityType: "Project",
+      entityId: before.projectId,
+      action: isBlocking ? "risk_escalated_to_blocking" : "risk_stood_down",
+      actorId: actor.id,
+      before: { riskId, isBlocking: before.isBlocking },
+      after: { riskId, isBlocking: after.isBlocking },
+      reason: reason.trim(),
+    });
+
+    await this.recalculateHealth(before.projectId);
+    return after;
+  }
+
+  /**
+   * Resolving needs a note saying how. "Resolved" with no account of what was
+   * done is the status report equivalent of a shrug, and this is the one that
+   * unblocks project closure.
+   */
+  async resolveRisk(actor: AuthenticatedUser, riskId: string, resolutionNote: string) {
+    this.assertManage(actor, "Resolving a risk");
+
+    const before = await prisma.projectRisk.findUnique({ where: { id: riskId } });
+    if (!before) throw new NotFoundException("Risk not found");
+    if (before.isResolved) throw new BadRequestException("That risk is already resolved");
+    if (!resolutionNote?.trim()) {
+      throw new BadRequestException("Say how it was resolved — this is what lets the project close");
+    }
+
+    const after = await prisma.projectRisk.update({
+      where: { id: riskId },
+      data: {
+        isResolved: true,
+        resolvedAt: new Date(),
+        resolutionNote: resolutionNote.trim(),
+      },
+    });
+
+    await this.audit.record({
+      entityType: "Project",
+      entityId: before.projectId,
+      action: "risk_resolved",
+      actorId: actor.id,
+      before: { riskId, isResolved: false, isBlocking: before.isBlocking },
+      after: { riskId, isResolved: true },
+      reason: resolutionNote.trim(),
+    });
+
+    await this.recalculateHealth(before.projectId);
+    return after;
+  }
+
+  // ---- Tasks in a project ------------------------------------------------
+
+  /**
+   * Put an existing task into a project, or take it out again.
+   *
+   * Tasks are not created here and are not owned here: a task in a project is
+   * still somebody's task, with the same lifecycle, the same reviewer and the
+   * same audit trail. The project link only says which body of work it counts
+   * towards - which is what makes "this project has four overdue tasks" a fact
+   * rather than a guess.
+   */
+  async attachTask(actor: AuthenticatedUser, projectId: string, taskId: string) {
+    this.assertManage(actor, "Adding a task to a project");
+
+    const [project, task] = await Promise.all([
+      prisma.project.findUnique({ where: { id: projectId }, select: { id: true, code: true } }),
+      prisma.task.findUnique({
+        where: { id: taskId },
+        select: { id: true, reference: true, projectId: true },
+      }),
+    ]);
+    if (!project) throw new NotFoundException("Project not found");
+    if (!task) throw new NotFoundException("Task not found");
+    if (task.projectId === projectId) return task;
+    if (task.projectId) {
+      throw new BadRequestException(
+        "That task already belongs to another project. Take it out of that one first — a task counts towards one project, or none.",
+      );
+    }
+
+    const after = await prisma.task.update({
+      where: { id: taskId },
+      data: { projectId },
+      select: { id: true, reference: true, projectId: true },
+    });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: taskId,
+      action: "added_to_project",
+      actorId: actor.id,
+      before: { projectId: null },
+      after: { projectId },
+      reason: `${task.reference} added to ${project.code}`,
+    });
+
+    await this.recalculateHealth(projectId);
+    return after;
+  }
+
+  async detachTask(actor: AuthenticatedUser, taskId: string, reason: string) {
+    this.assertManage(actor, "Removing a task from a project");
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, reference: true, projectId: true },
+    });
+    if (!task) throw new NotFoundException("Task not found");
+    if (!task.projectId) throw new BadRequestException("That task is not in a project");
+    if (!reason?.trim()) {
+      throw new BadRequestException("Say why it is coming out — the project's figures change when it does");
+    }
+
+    const projectId = task.projectId;
+    await prisma.task.update({ where: { id: taskId }, data: { projectId: null } });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: taskId,
+      action: "removed_from_project",
+      actorId: actor.id,
+      before: { projectId },
+      after: { projectId: null },
+      reason: reason.trim(),
+    });
+
+    await this.recalculateHealth(projectId);
+    return { id: taskId };
+  }
+
+  /**
+   * Tasks that belong to no project, for the picker. Closed work is not
+   * offered, and the list is the same whichever project is asking - a task
+   * counts towards one project or none, so there is nothing to scope.
+   */
+  async unassignedTasks() {
+    return prisma.task.findMany({
+      where: {
+        projectId: null,
+        status: { notIn: [TaskStatus.CLOSED, TaskStatus.CANCELLED] },
+      },
+      select: {
+        id: true,
+        reference: true,
+        title: true,
+        dueDate: true,
+        assignee: { select: { name: true } },
+      },
+      orderBy: { dueDate: "asc" },
+      take: 200,
+    });
+  }
+
   // ---- RACI -------------------------------------------------------------
 
   /**

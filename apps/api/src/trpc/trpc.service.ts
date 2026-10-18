@@ -395,6 +395,77 @@ export class TrpcService {
             this.projectService.overrideHealth(ctx.user, input.id, input.health, input.reason),
           ),
 
+        /**
+         * Milestones, risks and the project's tasks. These were readable with
+         * no way in, which left project health computed from three permanently
+         * empty inputs - GREEN forever, and meaningless.
+         */
+        addMilestone: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(
+            z.object({
+              projectId: z.string(),
+              name: z.string().min(2).max(200),
+              targetDate: z.date(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.projectService.addMilestone(ctx.user, input)),
+
+        setMilestoneComplete: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(z.object({ milestoneId: z.string(), complete: z.boolean() }))
+          .mutation(({ ctx, input }) =>
+            this.projectService.setMilestoneComplete(ctx.user, input.milestoneId, input.complete),
+          ),
+
+        removeMilestone: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(z.object({ milestoneId: z.string() }))
+          .mutation(({ ctx, input }) =>
+            this.projectService.removeMilestone(ctx.user, input.milestoneId),
+          ),
+
+        raiseRisk: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(
+            z.object({
+              projectId: z.string(),
+              title: z.string().min(3).max(200),
+              description: z.string().max(4000).optional(),
+              isBlocking: z.boolean().default(false),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.projectService.raiseRisk(ctx.user, input)),
+
+        setRiskBlocking: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(
+            z.object({
+              riskId: z.string(),
+              isBlocking: z.boolean(),
+              reason: z.string().min(3).max(1000),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.projectService.setRiskBlocking(ctx.user, input.riskId, input.isBlocking, input.reason),
+          ),
+
+        resolveRisk: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(z.object({ riskId: z.string(), resolutionNote: z.string().min(3).max(2000) }))
+          .mutation(({ ctx, input }) =>
+            this.projectService.resolveRisk(ctx.user, input.riskId, input.resolutionNote),
+          ),
+
+        attachTask: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(z.object({ projectId: z.string(), taskId: z.string() }))
+          .mutation(({ ctx, input }) =>
+            this.projectService.attachTask(ctx.user, input.projectId, input.taskId),
+          ),
+
+        detachTask: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
+          .input(z.object({ taskId: z.string(), reason: z.string().min(3).max(1000) }))
+          .mutation(({ ctx, input }) =>
+            this.projectService.detachTask(ctx.user, input.taskId, input.reason),
+          ),
+
+        /** Still-open tasks that are in no project, for the "add a task" picker. */
+        unassignedTasks: protectedProcedure.query(() => this.projectService.unassignedTasks()),
+
         assignRaci: requireRoles("SYSTEM_ADMIN", "DEPARTMENT_HEAD", "PROJECT_MANAGER", "MANAGER")
           .input(
             z.object({
