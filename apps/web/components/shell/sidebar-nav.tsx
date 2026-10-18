@@ -3,15 +3,20 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { isActivePath } from "@/lib/active-path";
-import { NAV_SECTIONS } from "@/lib/nav";
+import { visibleSections } from "@/lib/nav";
+import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 
 export function SidebarNav() {
   const pathname = usePathname();
+  const me = trpc.meta.me.useQuery();
+  // Until the session resolves, show only what everyone sees. Rendering the
+  // full menu and then removing entries is worse than revealing them late.
+  const sections = visibleSections(me.data?.roles ?? []);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-5 px-3 py-4">
-      {NAV_SECTIONS.map((section, i) => (
+      {sections.map((section, i) => (
         <div key={section.heading ?? `group-${i}`} className="flex flex-col gap-1">
           {section.heading && <div className="label-caps px-2 pb-1">{section.heading}</div>}
           {section.items.map(({ label, href, icon: Icon }) => {

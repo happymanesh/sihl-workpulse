@@ -1,6 +1,6 @@
 import * as React from "react";
 import { SidebarNav } from "./sidebar-nav";
-import { ThemeToggle } from "./theme-toggle";
+import { UserMenu } from "./user-menu";
 
 /**
  * Application chrome: fixed sidebar, sticky page header, scrolling content.
@@ -26,14 +26,17 @@ export function AppShell({
         <div className="flex-1 overflow-y-auto">
           <SidebarNav />
         </div>
-        <div className="border-t border-border px-3 py-2.5">
-          <ThemeToggle />
-        </div>
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-5 backdrop-blur">
           {header}
+          {/* Account, settings, support and sign-out live top right, where
+              people look for them. Theme moved in here too rather than sitting
+              at the bottom of the sidebar. */}
+          <div className="ml-auto flex items-center gap-2">
+            <UserMenu />
+          </div>
         </header>
         <main className="flex-1 px-5 py-6">{children}</main>
       </div>
