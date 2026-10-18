@@ -1,14 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { use, useState } from "react";
+import { Fragment, use, useState } from "react";
 import { ArrowLeft, Pause, Play, Plus } from "lucide-react";
 import { PriorityTag, type Priority } from "@/components/task/task-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
-import { trpc } from "@/lib/trpc/client";
+import { trpc, type RouterOutputs } from "@/lib/trpc/client";
 
 const STATUS_TONE = { DRAFT: "neutral", PENDING_REVIEW: "warning", APPROVED: "success", RETIRED: "neutral" } as const;
 const FREQUENCIES = ["", "DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"] as const;
@@ -40,6 +40,22 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
   // For the inline "serves" picker on each activity row.
   const processes = trpc.governance.processes.useQuery();
   const linkProcess = trpc.governance.setActivityProcess.useMutation({ onSuccess: refresh, onError });
+
+  // Which activity is open for editing. Held on the page so only one row is
+  // ever open at a time; the pending changes live in the editor itself.
+  const [editing, setEditing] = useState<string | null>(null);
+  const amend = trpc.activity.amend.useMutation({
+    onSuccess: (r) => {
+      setEditing(null);
+      if (r.returnedToDraft) {
+        setError(
+          "Recurrence changed, so this activity has gone back to draft — approve it again to resume generating work.",
+        );
+      }
+      refresh();
+    },
+    onError,
+  });
 
   if (card.isLoading) return <div className="h-40 animate-pulse rounded-lg bg-muted" />;
 
@@ -127,81 +143,98 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
             </thead>
             <tbody>
               {c.activities.map((a) => (
-                <tr key={a.id} className="border-b border-border last:border-b-0">
-                  <td className="px-4 py-2.5 text-sm">{a.title}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">{a.taskType.name}</td>
-                  <td className="px-4 py-2.5 text-xs text-muted-foreground">
-                    {a.frequency
-                      ? `${a.interval > 1 ? `Every ${a.interval} ` : ""}${a.frequency.toLowerCase()}${a.leadTimeDays ? ` · ${a.leadTimeDays}d lead` : ""}`
-                      : "One-off"}
-                  </td>
-                  <td className="px-4 py-2.5 text-xs">
-                    {/* Editable in place: an activity created without a control
-                        had no way to acquire one, and approval is refused until
-                        it does. */}
-                    {a.status === "APPROVED" && a.process ? (
-                      <span className="tabular text-muted-foreground" title={a.process.name}>
-                        {a.process.code}
-                      </span>
-                    ) : (
-                      <select
-                        aria-label={`Control served by ${a.title}`}
-                        className="h-7 w-44 rounded-md border border-input bg-card px-1.5 text-xs"
-                        value={a.process?.id ?? ""}
-                        onChange={(e) =>
-                          linkProcess.mutate({ activityId: a.id, processId: e.target.value || null })
-                        }
-                      >
-                        <option value="">No control</option>
-                        {(processes.data ?? [])
-                          .filter((pr) => pr.status !== "RETIRED")
-                          .map((pr) => (
-                            <option key={pr.id} value={pr.id}>
-                              {pr.code}
-                            </option>
-                          ))}
-                      </select>
-                    )}
-                  </td>
-                  <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{a.estimatedMinutes}m</td>
-                  <td className="px-4 py-2.5">
-                    <PriorityTag priority={a.priority as Priority} />
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex items-center gap-1.5">
-                      <Badge tone={STATUS_TONE[a.status]}>{a.status.replace("_", " ").toLowerCase()}</Badge>
-                      {a.isPaused && <Badge tone="warning">paused</Badge>}
-                    </div>
-                  </td>
-                  <td className="px-4 py-2.5">
-                    <div className="flex justify-end gap-1">
-                      {a.status !== "APPROVED" && (
+                <Fragment key={a.id}>
+                  <tr className="border-b border-border last:border-b-0">
+                    <td className="px-4 py-2.5 text-sm">{a.title}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">{a.taskType.name}</td>
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {a.frequency
+                        ? `${a.interval > 1 ? `Every ${a.interval} ` : ""}${a.frequency.toLowerCase()}${a.leadTimeDays ? ` · ${a.leadTimeDays}d lead` : ""}`
+                        : "One-off"}
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {/* Editable in place: an activity created without a control
+                          had no way to acquire one, and approval is refused until
+                          it does. */}
+                      {a.status === "APPROVED" && a.process ? (
+                        <span className="tabular text-muted-foreground" title={a.process.name}>
+                          {a.process.code}
+                        </span>
+                      ) : (
+                        <select
+                          aria-label={`Control served by ${a.title}`}
+                          className="h-7 w-44 rounded-md border border-input bg-card px-1.5 text-xs"
+                          value={a.process?.id ?? ""}
+                          onChange={(e) =>
+                            linkProcess.mutate({ activityId: a.id, processId: e.target.value || null })
+                          }
+                        >
+                          <option value="">No control</option>
+                          {(processes.data ?? [])
+                            .filter((pr) => pr.status !== "RETIRED")
+                            .map((pr) => (
+                              <option key={pr.id} value={pr.id}>
+                                {pr.code}
+                              </option>
+                            ))}
+                        </select>
+                      )}
+                    </td>
+                    <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{a.estimatedMinutes}m</td>
+                    <td className="px-4 py-2.5">
+                      <PriorityTag priority={a.priority as Priority} />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex items-center gap-1.5">
+                        <Badge tone={STATUS_TONE[a.status]}>{a.status.replace("_", " ").toLowerCase()}</Badge>
+                        {a.isPaused && <Badge tone="warning">paused</Badge>}
+                      </div>
+                    </td>
+                    <td className="px-4 py-2.5">
+                      <div className="flex justify-end gap-1">
+                        {a.status !== "APPROVED" && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            // Approval is refused without a control, so offering
+                            // the button and letting the server say no just
+                            // teaches people the screen is unreliable.
+                            disabled={!a.process}
+                            title={a.process ? undefined : "Choose the control this activity serves first"}
+                            onClick={() => setActivityStatus.mutate({ activityId: a.id, status: "APPROVED" })}
+                          >
+                            Approve
+                          </Button>
+                        )}
+                        {a.status === "APPROVED" && (
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            title={a.isPaused ? "Resume generation" : "Pause generation"}
+                            onClick={() => setPaused.mutate({ activityId: a.id, isPaused: !a.isPaused })}
+                          >
+                            {a.isPaused ? <Play /> : <Pause />}
+                          </Button>
+                        )}
                         <Button
                           size="sm"
-                          variant="outline"
-                          // Approval is refused without a control, so offering
-                          // the button and letting the server say no just
-                          // teaches people the screen is unreliable.
-                          disabled={!a.process}
-                          title={a.process ? undefined : "Choose the control this activity serves first"}
-                          onClick={() => setActivityStatus.mutate({ activityId: a.id, status: "APPROVED" })}
-                        >
-                          Approve
-                        </Button>
-                      )}
-                      {a.status === "APPROVED" && (
-                        <Button
-                          size="icon"
                           variant="ghost"
-                          title={a.isPaused ? "Resume generation" : "Pause generation"}
-                          onClick={() => setPaused.mutate({ activityId: a.id, isPaused: !a.isPaused })}
+                          onClick={() => setEditing(editing === a.id ? null : a.id)}
                         >
-                          {a.isPaused ? <Play /> : <Pause />}
+                          {editing === a.id ? "Cancel" : "Edit"}
                         </Button>
-                      )}
-                    </div>
-                  </td>
-                </tr>
+                      </div>
+                    </td>
+                  </tr>
+                  {editing === a.id && (
+                    <ActivityEditor
+                      activity={a}
+                      pending={amend.isPending}
+                      onCancel={() => setEditing(null)}
+                      onSave={(changes, reason) => amend.mutate({ activityId: a.id, changes, reason })}
+                    />
+                  )}
+                </Fragment>
               ))}
               {c.activities.length === 0 && (
                 <tr>
@@ -551,5 +584,228 @@ function AddActivity({
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+type ActivityRow = RouterOutputs["deskCard"]["byId"]["activities"][number];
+
+/** The frequencies minus the empty option the <select> needs for "one-off". */
+type Frequency = Exclude<(typeof FREQUENCIES)[number], "">;
+
+type AmendChanges = {
+  title?: string;
+  priority?: (typeof PRIORITIES)[number];
+  estimatedMinutes?: number;
+  frequency?: Frequency | null;
+  interval?: number;
+  daysOfWeek?: number[];
+  dayOfMonth?: number | null;
+  leadTimeDays?: number;
+};
+
+/**
+ * Amend one activity in place.
+ *
+ * Only what actually changed is sent, because the server decides what a change
+ * means from the fields it receives: wording is free, substance needs a reason,
+ * and anything about recurrence returns an approved activity to draft. Sending
+ * the whole row every time would make every edit look like a definition change.
+ *
+ * Nothing here touches tasks that already exist — see the note in the footer,
+ * which is the question holders ask first.
+ */
+function ActivityEditor({
+  activity,
+  pending,
+  onCancel,
+  onSave,
+}: {
+  activity: ActivityRow;
+  pending: boolean;
+  onCancel: () => void;
+  onSave: (changes: AmendChanges, reason?: string) => void;
+}) {
+  const [f, setF] = useState({
+    title: activity.title,
+    priority: activity.priority as (typeof PRIORITIES)[number],
+    estimatedMinutes: activity.estimatedMinutes,
+    frequency: (activity.frequency ?? "") as (typeof FREQUENCIES)[number],
+    interval: activity.interval,
+    daysOfWeek: activity.daysOfWeek ?? [],
+    dayOfMonth: activity.dayOfMonth ?? 1,
+    leadTimeDays: activity.leadTimeDays ?? 0,
+  });
+  const [reason, setReason] = useState("");
+
+  const monthly = ["MONTHLY", "QUARTERLY", "YEARLY"].includes(f.frequency);
+  const sameDays =
+    JSON.stringify([...f.daysOfWeek].sort()) === JSON.stringify([...(activity.daysOfWeek ?? [])].sort());
+
+  const changesSubstance =
+    f.priority !== activity.priority || f.estimatedMinutes !== activity.estimatedMinutes;
+  const changesDefinition =
+    f.frequency !== (activity.frequency ?? "") ||
+    f.interval !== activity.interval ||
+    !sameDays ||
+    (monthly && f.dayOfMonth !== activity.dayOfMonth) ||
+    (!!f.frequency && f.leadTimeDays !== (activity.leadTimeDays ?? 0));
+  const needsReason = changesSubstance || changesDefinition;
+  const changed = needsReason || f.title.trim() !== activity.title;
+
+  const submit = () => {
+    const changes: AmendChanges = {};
+    if (f.title.trim() !== activity.title) changes.title = f.title.trim();
+    if (f.priority !== activity.priority) changes.priority = f.priority;
+    if (f.estimatedMinutes !== activity.estimatedMinutes) changes.estimatedMinutes = f.estimatedMinutes;
+    if (changesDefinition) {
+      changes.frequency = (f.frequency as Frequency) || null;
+      changes.interval = f.interval;
+      changes.daysOfWeek = f.frequency === "WEEKLY" ? f.daysOfWeek : [];
+      changes.dayOfMonth = monthly ? f.dayOfMonth : null;
+      changes.leadTimeDays = f.frequency ? f.leadTimeDays : 0;
+    }
+    onSave(changes, reason.trim() || undefined);
+  };
+
+  return (
+    <tr className="border-b border-border bg-muted/30 last:border-b-0">
+      <td colSpan={8} className="px-4 py-3">
+        <div className="flex flex-col gap-3">
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field label="Title" htmlFor={`e-t-${activity.id}`} required className="sm:col-span-3">
+              <Input id={`e-t-${activity.id}`} value={f.title} onChange={(e) => setF({ ...f, title: e.target.value })} />
+            </Field>
+
+            <Field label="Priority" htmlFor={`e-p-${activity.id}`}>
+              <Select
+                id={`e-p-${activity.id}`}
+                value={f.priority}
+                onChange={(e) => setF({ ...f, priority: e.target.value as typeof f.priority })}
+              >
+                {PRIORITIES.map((x) => (
+                  <option key={x} value={x}>
+                    {x.charAt(0) + x.slice(1).toLowerCase()}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Estimated effort (minutes)" htmlFor={`e-m-${activity.id}`}>
+              <Input
+                id={`e-m-${activity.id}`}
+                type="number"
+                min={1}
+                value={f.estimatedMinutes}
+                onChange={(e) => setF({ ...f, estimatedMinutes: Number(e.target.value) })}
+              />
+            </Field>
+
+            <Field label="Frequency" htmlFor={`e-f-${activity.id}`} hint="Changing this needs re-approval">
+              <Select
+                id={`e-f-${activity.id}`}
+                value={f.frequency}
+                onChange={(e) => setF({ ...f, frequency: e.target.value as typeof f.frequency })}
+              >
+                {FREQUENCIES.map((x) => (
+                  <option key={x} value={x}>
+                    {x ? x.charAt(0) + x.slice(1).toLowerCase() : "One-off"}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+
+            {f.frequency === "WEEKLY" && (
+              <Field label="Days" className="sm:col-span-2">
+                <div className="flex flex-wrap gap-1">
+                  {WEEKDAYS.map((d) => {
+                    const on = f.daysOfWeek.includes(d.n);
+                    return (
+                      <button
+                        key={d.n}
+                        type="button"
+                        onClick={() =>
+                          setF({
+                            ...f,
+                            daysOfWeek: on ? f.daysOfWeek.filter((x) => x !== d.n) : [...f.daysOfWeek, d.n],
+                          })
+                        }
+                        className={`rounded-md border px-2.5 py-1 text-xs transition-colors ${on ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground"}`}
+                      >
+                        {d.l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Field>
+            )}
+
+            {monthly && (
+              <Field label="Day of month" htmlFor={`e-dm-${activity.id}`}>
+                <Input
+                  id={`e-dm-${activity.id}`}
+                  type="number"
+                  min={1}
+                  max={31}
+                  value={f.dayOfMonth}
+                  onChange={(e) => setF({ ...f, dayOfMonth: Number(e.target.value) })}
+                />
+              </Field>
+            )}
+
+            {!!f.frequency && (
+              <Field label="Lead time (working days)" htmlFor={`e-l-${activity.id}`}>
+                <Input
+                  id={`e-l-${activity.id}`}
+                  type="number"
+                  min={0}
+                  value={f.leadTimeDays}
+                  onChange={(e) => setF({ ...f, leadTimeDays: Number(e.target.value) })}
+                />
+              </Field>
+            )}
+
+            <Field
+              label="Reason"
+              htmlFor={`e-r-${activity.id}`}
+              required={needsReason}
+              hint={needsReason ? "Recorded against the amendment" : "Not needed for a wording fix"}
+              className="sm:col-span-3"
+            >
+              <Input
+                id={`e-r-${activity.id}`}
+                value={reason}
+                disabled={!needsReason}
+                placeholder={needsReason ? "Why this is changing" : "—"}
+                onChange={(e) => setReason(e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              disabled={pending || !changed || f.title.trim().length < 2 || (needsReason && reason.trim().length < 3)}
+              onClick={submit}
+            >
+              {pending ? "Saving…" : "Save amendment"}
+            </Button>
+            <Button size="sm" variant="ghost" onClick={onCancel}>
+              Cancel
+            </Button>
+            {changesDefinition && activity.status === "APPROVED" && (
+              <span className="text-2xs text-warning">
+                Saving returns this activity to draft — it generates nothing until approved again.
+              </span>
+            )}
+          </div>
+
+          <p className="max-w-prose text-2xs text-muted-foreground">
+            Applies to work generated from now on. Tasks that already exist keep the definition they
+            were created under, so an auditor sees the obligation that actually applied rather than a
+            later revision of it. To change a task that exists today, edit that task.
+          </p>
+        </div>
+      </td>
+    </tr>
   );
 }

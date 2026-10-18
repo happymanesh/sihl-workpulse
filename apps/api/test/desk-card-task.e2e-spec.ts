@@ -232,6 +232,71 @@ d("Desk card and task lifecycle (e2e)", () => {
         expect(entry?.reason).toContain("re-measured");
       });
     });
+
+    /**
+     * Amendments are sorted by what a change does, not by which field moved:
+     * wording is free, substance needs a reason, and anything about recurrence
+     * returns an approved activity to draft because it changes what work
+     * exists rather than how it reads.
+     */
+    describe("amendment", () => {
+      it("lets a wording fix through with no reason", async () => {
+        const title = `${RUN} Monthly SEBI filing (Form 10)`;
+        const { returnedToDraft } = await activities.amend(
+          actor({ roles: ["DEPARTMENT_HEAD"] }),
+          activityId,
+          { title },
+        );
+        expect(returnedToDraft).toBe(false);
+
+        const entry = await prisma.auditLog.findFirst({
+          where: { entityType: "DeskCardActivity", entityId: activityId, action: "wording_amended" },
+          orderBy: { createdAt: "desc" },
+        });
+        expect(entry?.afterJson).toMatchObject({ title });
+      });
+
+      it("refuses a change of substance with no reason", async () => {
+        await expect(
+          activities.amend(actor({ roles: ["DEPARTMENT_HEAD"] }), activityId, {
+            priority: Priority.LOW,
+          }),
+        ).rejects.toThrow(/requires a reason/);
+      });
+
+      it("refuses the holder, who cannot rewrite their own obligation", async () => {
+        await expect(
+          activities.amend(actor({ roles: ["EMPLOYEE"], employeeId: employeeB }), activityId, {
+            title: `${RUN} renamed by the holder`,
+          }),
+        ).rejects.toThrow(/Department Head or System Admin/);
+      });
+
+      it("returns an approved activity to draft when the recurrence changes", async () => {
+        await prisma.deskCardActivity.update({
+          where: { id: activityId },
+          data: { status: ApprovalStatus.APPROVED },
+        });
+
+        const { activity, returnedToDraft } = await activities.amend(
+          actor({ roles: ["DEPARTMENT_HEAD"] }),
+          activityId,
+          { dayOfMonth: 25 },
+          `${RUN} filing window moved by the exchange`,
+        );
+
+        expect(returnedToDraft).toBe(true);
+        expect(activity.status).toBe(ApprovalStatus.DRAFT);
+        expect(activity.dayOfMonth).toBe(25);
+
+        const entry = await prisma.auditLog.findFirst({
+          where: { entityType: "DeskCardActivity", entityId: activityId, action: "definition_amended" },
+          orderBy: { createdAt: "desc" },
+        });
+        expect(entry?.beforeJson).toMatchObject({ dayOfMonth: 22, status: "APPROVED" });
+        expect(entry?.afterJson).toMatchObject({ status: "DRAFT", returnedToDraft: true });
+      });
+    });
   });
 
   describe("task lifecycle", () => {

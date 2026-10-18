@@ -104,6 +104,143 @@ export class DeskCardActivityService {
    * The holder is not powerless - they raise a revision request, which is a
    * notification, not a write. That path is deliberately not a mutation here.
    */
+  /**
+   * Amend an activity.
+   *
+   * Nothing here touches tasks that already exist. A task was generated under
+   * the definition in force at the time, the same way its workflow version is
+   * pinned at creation - an auditor must see the obligation that actually
+   * applied, not whatever it was later revised to. Amendments take effect on
+   * work generated from now on.
+   *
+   * Changes are sorted by what they do, not by which field they touch:
+   *
+   *   Wording      title and description. A typo fix is not a governance event.
+   *   Substance    priority, effort, task type, reviewer. These change how the
+   *                work is weighted and who checks it, so they need a reason.
+   *   Definition   anything recurrence. These change WHAT WORK EXISTS, which is
+   *                the thing approval was granted for - so the activity returns
+   *                to draft and somebody has to approve it again.
+   */
+  async amend(
+    actor: AuthenticatedUser,
+    activityId: string,
+    changes: {
+      title?: string;
+      description?: string | null;
+      priority?: Priority;
+      estimatedMinutes?: number;
+      taskTypeId?: string;
+      reviewerEmployeeId?: string | null;
+      frequency?: RecurrenceFrequency | null;
+      interval?: number;
+      daysOfWeek?: number[];
+      dayOfMonth?: number | null;
+      leadTimeDays?: number;
+    },
+    reason?: string,
+  ) {
+    if (!this.canGovern(actor)) {
+      throw new ForbiddenException(
+        "Activities may only be amended by a Department Head or System Admin.",
+      );
+    }
+
+    const before = await prisma.deskCardActivity.findUnique({ where: { id: activityId } });
+    if (!before) throw new NotFoundException(`Activity ${activityId} not found`);
+
+    const SUBSTANCE = ["priority", "estimatedMinutes", "taskTypeId", "reviewerEmployeeId"] as const;
+    const DEFINITION = ["frequency", "interval", "daysOfWeek", "dayOfMonth", "leadTimeDays"] as const;
+
+    const touched = (keys: readonly string[]) =>
+      keys.some((k) => {
+        const next = (changes as Record<string, unknown>)[k];
+        if (next === undefined) return false;
+        const current = (before as unknown as Record<string, unknown>)[k];
+        return JSON.stringify(next) !== JSON.stringify(current);
+      });
+
+    const changesSubstance = touched(SUBSTANCE);
+    const changesDefinition = touched(DEFINITION);
+
+    if ((changesSubstance || changesDefinition) && !reason?.trim()) {
+      throw new BadRequestException(
+        "Changing what the work is, how it is weighted or when it recurs requires a reason.",
+      );
+    }
+
+    if (changes.estimatedMinutes !== undefined && changes.estimatedMinutes <= 0) {
+      throw new BadRequestException("Estimated effort must be greater than zero");
+    }
+
+    const returnsToDraft = changesDefinition && before.status === ApprovalStatus.APPROVED;
+
+    const after = await prisma.deskCardActivity.update({
+      where: { id: activityId },
+      data: {
+        ...(changes.title !== undefined ? { title: changes.title.trim() } : {}),
+        ...(changes.description !== undefined
+          ? { description: changes.description?.trim() || null }
+          : {}),
+        ...(changes.priority !== undefined ? { priority: changes.priority } : {}),
+        ...(changes.estimatedMinutes !== undefined
+          ? { estimatedMinutes: changes.estimatedMinutes }
+          : {}),
+        ...(changes.taskTypeId !== undefined ? { taskTypeId: changes.taskTypeId } : {}),
+        ...(changes.reviewerEmployeeId !== undefined
+          ? { reviewerEmployeeId: changes.reviewerEmployeeId }
+          : {}),
+        ...(changes.frequency !== undefined ? { frequency: changes.frequency } : {}),
+        ...(changes.interval !== undefined ? { interval: changes.interval } : {}),
+        ...(changes.daysOfWeek !== undefined ? { daysOfWeek: changes.daysOfWeek } : {}),
+        ...(changes.dayOfMonth !== undefined ? { dayOfMonth: changes.dayOfMonth } : {}),
+        ...(changes.leadTimeDays !== undefined ? { leadTimeDays: changes.leadTimeDays } : {}),
+        ...(returnsToDraft ? { status: ApprovalStatus.DRAFT } : {}),
+      },
+    });
+
+    await this.audit.record({
+      entityType: "DeskCardActivity",
+      entityId: activityId,
+      action: changesDefinition
+        ? "definition_amended"
+        : changesSubstance
+          ? "amended"
+          : "wording_amended",
+      actorId: actor.id,
+      before: {
+        title: before.title,
+        priority: before.priority,
+        estimatedMinutes: before.estimatedMinutes,
+        taskTypeId: before.taskTypeId,
+        reviewerEmployeeId: before.reviewerEmployeeId,
+        frequency: before.frequency,
+        interval: before.interval,
+        daysOfWeek: before.daysOfWeek,
+        dayOfMonth: before.dayOfMonth,
+        leadTimeDays: before.leadTimeDays,
+        status: before.status,
+      },
+      after: {
+        title: after.title,
+        priority: after.priority,
+        estimatedMinutes: after.estimatedMinutes,
+        taskTypeId: after.taskTypeId,
+        reviewerEmployeeId: after.reviewerEmployeeId,
+        frequency: after.frequency,
+        interval: after.interval,
+        daysOfWeek: after.daysOfWeek,
+        dayOfMonth: after.dayOfMonth,
+        leadTimeDays: after.leadTimeDays,
+        status: after.status,
+        returnedToDraft: returnsToDraft,
+      },
+      reason,
+    });
+
+    return { activity: after, returnedToDraft: returnsToDraft };
+  }
+
   async amendEstimatedMinutes(
     actor: AuthenticatedUser,
     activityId: string,

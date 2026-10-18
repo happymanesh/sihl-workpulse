@@ -201,6 +201,36 @@ export class TrpcService {
           )
           .mutation(({ ctx, input }) => this.activityService.create(ctx.user, input)),
 
+        /**
+         * Amend an activity. Nothing here changes tasks that already exist -
+         * they were generated under the definition in force at the time.
+         * Recurrence changes return the activity to draft for re-approval,
+         * because they change what work exists rather than how it reads.
+         */
+        amend: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              activityId: z.string(),
+              changes: z.object({
+                title: z.string().min(2).max(200).optional(),
+                description: z.string().max(2000).nullish(),
+                priority: z.nativeEnum(Priority).optional(),
+                estimatedMinutes: z.number().int().positive().optional(),
+                taskTypeId: z.string().optional(),
+                reviewerEmployeeId: z.string().nullish(),
+                frequency: z.nativeEnum(RecurrenceFrequency).nullish(),
+                interval: z.number().int().positive().optional(),
+                daysOfWeek: z.array(z.number().int().min(1).max(7)).optional(),
+                dayOfMonth: z.number().int().min(1).max(31).nullish(),
+                leadTimeDays: z.number().int().min(0).optional(),
+              }),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.activityService.amend(ctx.user, input.activityId, input.changes, input.reason),
+          ),
+
         /** TM-FR-076 - governed, and the reason is mandatory at the edge too. */
         amendEstimatedMinutes: requireRoles(...GOVERNANCE_ROLES)
           .input(
