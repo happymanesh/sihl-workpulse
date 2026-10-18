@@ -58,6 +58,7 @@ model Employee {
   deskCardHistory DeskCardHolderHistory[]
   tasksAssigned   Task[]                  @relation("TaskAssignee")
   tasksReviewing  Task[]                  @relation("TaskReviewer")
+  taskComments    TaskComment[]
   activitiesReviewing DeskCardActivity[] @relation("ActivityReviewer")
   timeBlocks      TimeBlock[]             @relation("TimeBlockOwner")
   capacityBudget  CapacityBudget?
@@ -555,6 +556,7 @@ model Task {
   commandCentreEvents CommandCentreEvent[]
   slaPredictions      SlaPrediction[]
 
+  comments       TaskComment[]
   checklistItems TaskChecklistItem[]
   statusHistory  TaskStatusHistory[]
   timeBlocks     TimeBlock[]
@@ -1759,4 +1761,59 @@ model SlaPrediction {
   @@index([taskId, predictedAt])
   @@index([actuallyBreached])
   @@map("sla_predictions")
+}
+
+
+/// A note somebody wrote on a task.
+///
+/// Added in Phase 7.2. Until then workPulse had nowhere to record what was
+/// actually done - only the lifecycle and a reason on certain transitions -
+/// which left two holes. Staff had no way to leave a handover note or explain a
+/// judgement call, and the anti-gaming check for "closed without evidence"
+/// tested `hasComment` against a field that did not exist, so it fell back to
+/// whether a status change happened to carry a reason.
+///
+/// Append-only by design: no update, no delete. A note somebody relied on must
+/// not be editable afterwards, and a task's narrative is part of the record an
+/// auditor reads. Correct a note by adding another.
+model TaskComment {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  authorEmployeeId String
+  author           Employee @relation(fields: [authorEmployeeId], references: [id])
+  /// Kept alongside the employee so the trail survives an employee record being
+  /// reassigned or re-synced from Frappe HR.
+  authorUserId     String?
+
+  body String
+
+  /// Why this note exists. ACCEPTANCE and COMPLETION notes are the ones the
+  /// evidence check looks for; GENERAL is an ordinary comment.
+  kind TaskCommentKind @default(GENERAL)
+
+  /// The lifecycle move this note accompanied, where it accompanied one.
+  relatedStatus TaskStatus?
+
+  /// True when the body arrived by dictation rather than typing. Worth knowing
+  /// when reading a note back: transcription makes mistakes that typing does
+  /// not, and a reader should weigh an odd phrase accordingly.
+  wasDictated Boolean @default(false)
+  /// Language the speaker used, as the transcriber reported it.
+  dictatedLanguage String?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([authorEmployeeId])
+  @@map("task_comments")
+}
+
+enum TaskCommentKind {
+  GENERAL
+  ACCEPTANCE
+  PROGRESS
+  COMPLETION
+  REVIEW
 }

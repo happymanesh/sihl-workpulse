@@ -2,6 +2,7 @@ import { Injectable } from "@nestjs/common";
 import {
   ApprovalStatus,
   Complexity,
+  TaskCommentKind,
   PolicyStatus,
   HandoverItemDisposition,
   HandoverReason,
@@ -41,6 +42,7 @@ import { EmployeeService } from "../modules/employee/employee.service";
 import { ReferenceService } from "../modules/reference/reference.service";
 import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
+import { TaskCommentService } from "../modules/task/task-comment.service";
 import { protectedProcedure, publicProcedure, requireRoles, router } from "./trpc";
 
 const MANAGEMENT_ROLES = [
@@ -71,6 +73,7 @@ export class TrpcService {
     private readonly deskCardService: DeskCardService,
     private readonly activityService: DeskCardActivityService,
     private readonly taskService: TaskService,
+    private readonly taskCommentService: TaskCommentService,
     private readonly referenceService: ReferenceService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
@@ -660,9 +663,30 @@ export class TrpcService {
               reason: z.string().max(1000).optional(),
               blockedReason: z.string().max(1000).optional(),
               blockingOwnerEmployeeId: z.string().optional(),
+              /** The person's own account of what they did, kept as a note. */
+              remark: z.string().max(4000).optional(),
+              remarkWasDictated: z.boolean().optional(),
+              remarkLanguage: z.string().max(16).nullish(),
             }),
           )
           .mutation(({ ctx, input }) => this.taskService.transition(ctx.user, input)),
+
+        comments: protectedProcedure
+          .input(z.object({ taskId: z.string() }))
+          .query(({ ctx, input }) => this.taskCommentService.list(ctx.user, input.taskId)),
+
+        /** Append a note. There is deliberately no edit or delete. */
+        addComment: protectedProcedure
+          .input(
+            z.object({
+              taskId: z.string(),
+              body: z.string().min(1).max(4000),
+              kind: z.nativeEnum(TaskCommentKind).optional(),
+              wasDictated: z.boolean().optional(),
+              dictatedLanguage: z.string().max(16).nullish(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.taskCommentService.add(ctx.user, input)),
 
         setChecklistItem: protectedProcedure
           .input(

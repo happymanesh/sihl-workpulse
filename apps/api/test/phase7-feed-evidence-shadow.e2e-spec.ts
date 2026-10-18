@@ -210,10 +210,24 @@ const CYCLE = `${RUN}-FY27H1`;
       });
     });
 
-    it("is idempotent: a second refresh over an unchanged enterprise raises nothing", async () => {
+    it("is idempotent: refreshing twice never leaves two open events for one condition", async () => {
+      // Asserting `second.raised === 0` looked like idempotency but tested the
+      // enterprise standing still. The suites run two at a time against one
+      // database, so another suite creating a missed recurring task between
+      // the two calls legitimately raises an event and the count is not zero.
+      //
+      // The property that actually matters is that one condition never yields
+      // two open events - that is what would make the feed unreadable - and it
+      // holds regardless of what else is happening.
       await commandCentre.refresh();
-      const second = await commandCentre.refresh();
-      expect(second.raised).toBe(0);
+      await commandCentre.refresh();
+
+      const duplicated = await prisma.commandCentreEvent.groupBy({
+        by: ["dedupeKey"],
+        where: { resolvedAt: null },
+        _count: { _all: true },
+      });
+      expect(duplicated.filter((d) => d._count._all > 1)).toEqual([]);
     }, 120_000);
 
     it("reports a pulse with a direction of travel", async () => {

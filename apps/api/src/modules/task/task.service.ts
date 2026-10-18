@@ -1,5 +1,14 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
-import { ActorType, Complexity, Priority, TaskOrigin, TaskStatus, WorkPulseRole, prisma } from "@workpulse/db";
+import {
+  ActorType,
+  Complexity,
+  Priority,
+  TaskCommentKind,
+  TaskOrigin,
+  TaskStatus,
+  WorkPulseRole,
+  prisma,
+} from "@workpulse/db";
 import { AuditService } from "../audit/audit.service";
 import type { AuthenticatedUser } from "../auth/identity.service";
 import { ProjectService } from "../project/project.service";
@@ -27,8 +36,31 @@ export interface TransitionInput {
   to: TaskStatus;
   reason?: string;
   blockedReason?: string;
+  /**
+   * A note to record alongside the move. Distinct from `reason`, which the
+   * state machine demands for certain transitions and which explains WHY the
+   * move was allowed; a remark is the person's own account of what they did.
+   */
+  remark?: string;
+  remarkWasDictated?: boolean;
+  remarkLanguage?: string | null;
   blockingOwnerEmployeeId?: string;
 }
+
+/**
+ * Which kind of note a remark becomes, by the move it accompanied. The kind is
+ * not decoration: the closure-evidence check looks for COMPLETION and REVIEW
+ * notes specifically, so a remark left at the right moment is what keeps a
+ * genuine closure from being flagged.
+ */
+const COMMENT_KIND_FOR: Partial<Record<TaskStatus, TaskCommentKind>> = {
+  [TaskStatus.ACCEPTED]: TaskCommentKind.ACCEPTANCE,
+  [TaskStatus.IN_PROGRESS]: TaskCommentKind.PROGRESS,
+  [TaskStatus.COMPLETED]: TaskCommentKind.COMPLETION,
+  [TaskStatus.PENDING_REVIEW]: TaskCommentKind.COMPLETION,
+  [TaskStatus.VERIFIED]: TaskCommentKind.REVIEW,
+  [TaskStatus.REJECTED]: TaskCommentKind.REVIEW,
+};
 
 @Injectable()
 export class TaskService {
@@ -230,13 +262,36 @@ export class TaskService {
       return updated;
     });
 
+    // A remark the person wrote about what they did, kept as a note on the task
+    // rather than buried in the audit trail - the trail records that a move
+    // happened, the note records what the work actually was. Added after the
+    // transaction so a failed note cannot roll back a legitimate status change.
+    if (input.remark?.trim() && actor.employeeId) {
+      await prisma.taskComment.create({
+        data: {
+          taskId: task.id,
+          authorEmployeeId: actor.employeeId,
+          authorUserId: actor.id,
+          body: input.remark.trim(),
+          kind: COMMENT_KIND_FOR[input.to] ?? TaskCommentKind.GENERAL,
+          relatedStatus: input.to,
+          wasDictated: input.remarkWasDictated ?? false,
+          dictatedLanguage: input.remarkLanguage ?? null,
+        },
+      });
+    }
+
     await this.audit.record({
       entityType: "Task",
       entityId: task.id,
       action: "status_changed",
       actorId: actor.id,
       before: { status: task.status },
-      after: { status: after.status, flaggedForReview: verdict.flagForReview },
+      after: {
+        status: after.status,
+        flaggedForReview: verdict.flagForReview,
+        remarkRecorded: Boolean(input.remark?.trim()),
+      },
       reason: input.reason ?? input.blockedReason,
     });
 

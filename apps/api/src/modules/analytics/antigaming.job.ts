@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { TaskStatus, prisma } from "@workpulse/db";
+import { TaskCommentKind, TaskStatus, prisma } from "@workpulse/db";
 import { FlagService } from "./flag.service";
 import {
   flagAbnormalSplitting,
@@ -85,6 +85,10 @@ export class AntiGamingJob {
           where: { toStatus: { in: [TaskStatus.COMPLETED, TaskStatus.CLOSED] } },
           select: { reason: true },
         },
+        comments: {
+          where: { kind: { in: [TaskCommentKind.COMPLETION, TaskCommentKind.REVIEW] } },
+          select: { id: true },
+        },
       },
     });
 
@@ -94,11 +98,14 @@ export class AntiGamingJob {
       assigneeEmployeeId: t.assigneeEmployeeId,
       requiresEvidence: true,
       hasChecklistCompletion: t.checklistItems.some((i) => i.isDone),
-      // No attachment model exists yet. Rather than pretend otherwise, the
-      // narrative reason recorded on the closing transition stands in for the
-      // closing note; attachments join this check when the model lands.
+      // No attachment model exists yet, so this stays false rather than
+      // pretending. Attachments join the check when that model lands.
       hasAttachment: false,
-      hasComment: t.statusHistory.some((h) => Boolean(h.reason?.trim())),
+      // A real completion or review note now, rather than the old proxy of
+      // "did the closing transition happen to carry a reason". Both still
+      // count: a reason given at closure is evidence too.
+      hasComment:
+        t.comments.length > 0 || t.statusHistory.some((h) => Boolean(h.reason?.trim())),
     }));
   }
 
