@@ -1,9 +1,10 @@
 import * as React from "react";
-import { SidebarNav } from "./sidebar-nav";
+import { Sidebar } from "./sidebar";
 import { UserMenu } from "./user-menu";
 
 /**
- * Application chrome: fixed sidebar, sticky page header, scrolling content.
+ * Application chrome: collapsible sidebar, sticky page header, scrolling
+ * content.
  *
  * The header is a slot rather than a prop-driven title bar because MIS and
  * task screens need filters, view switchers and actions in it - baking in a
@@ -18,15 +19,7 @@ export function AppShell({
 }) {
   return (
     <div className="flex min-h-dvh">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-border bg-card md:flex">
-        <div className="flex h-12 items-center gap-2 border-b border-border px-4">
-          <span className="text-sm font-semibold tracking-tight">workPulse</span>
-          <span className="label-caps">SIHL</span>
-        </div>
-        <div className="flex-1 overflow-y-auto">
-          <SidebarNav />
-        </div>
-      </aside>
+      <Sidebar />
 
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="sticky top-0 z-10 flex h-12 items-center gap-3 border-b border-border bg-background/95 px-5 backdrop-blur">
