@@ -1,6 +1,6 @@
 import { Injectable, Logger } from "@nestjs/common";
 import { Cron, CronExpression } from "@nestjs/schedule";
-import { TaskCommentKind, TaskStatus, prisma } from "@workpulse/db";
+import { TaskAttachmentKind, TaskCommentKind, TaskStatus, prisma } from "@workpulse/db";
 import { FlagService } from "./flag.service";
 import {
   flagAbnormalSplitting,
@@ -89,6 +89,13 @@ export class AntiGamingJob {
           where: { kind: { in: [TaskCommentKind.COMPLETION, TaskCommentKind.REVIEW] } },
           select: { id: true },
         },
+        attachments: {
+          // Withdrawn files do not count. A file attached and then taken off
+          // again is not evidence that the work was done, and the audit trail
+          // still shows both, so nothing is hidden by leaving it out here.
+          where: { kind: TaskAttachmentKind.EVIDENCE, removedAt: null },
+          select: { id: true },
+        },
       },
     });
 
@@ -98,9 +105,7 @@ export class AntiGamingJob {
       assigneeEmployeeId: t.assigneeEmployeeId,
       requiresEvidence: true,
       hasChecklistCompletion: t.checklistItems.some((i) => i.isDone),
-      // No attachment model exists yet, so this stays false rather than
-      // pretending. Attachments join the check when that model lands.
-      hasAttachment: false,
+      hasAttachment: t.attachments.length > 0,
       // A real completion or review note now, rather than the old proxy of
       // "did the closing transition happen to carry a reason". Both still
       // count: a reason given at closure is evidence too.

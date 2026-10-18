@@ -43,6 +43,7 @@ import { ReferenceService } from "../modules/reference/reference.service";
 import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
 import { TaskCommentService } from "../modules/task/task-comment.service";
+import { AttachmentService } from "../modules/attachment/attachment.service";
 import { protectedProcedure, publicProcedure, requireRoles, router } from "./trpc";
 
 const MANAGEMENT_ROLES = [
@@ -74,6 +75,7 @@ export class TrpcService {
     private readonly activityService: DeskCardActivityService,
     private readonly taskService: TaskService,
     private readonly taskCommentService: TaskCommentService,
+    private readonly attachmentService: AttachmentService,
     private readonly referenceService: ReferenceService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
@@ -717,6 +719,22 @@ export class TrpcService {
             }),
           )
           .mutation(({ ctx, input }) => this.taskCommentService.add(ctx.user, input)),
+
+        /**
+         * Files on a task. Uploading and downloading are REST - they carry
+         * bytes - but listing and withdrawing belong with the typed client.
+         */
+        attachments: protectedProcedure
+          .input(z.object({ taskId: z.string() }))
+          .query(({ ctx, input }) => this.attachmentService.list(ctx.user, input.taskId)),
+
+        /**
+         * Withdraw a file. It is marked, never deleted, and refused outright
+         * once the task has been verified or closed.
+         */
+        removeAttachment: protectedProcedure
+          .input(z.object({ attachmentId: z.string(), reason: z.string().min(3).max(1000) }))
+          .mutation(({ ctx, input }) => this.attachmentService.remove(ctx.user, input)),
 
         setChecklistItem: protectedProcedure
           .input(

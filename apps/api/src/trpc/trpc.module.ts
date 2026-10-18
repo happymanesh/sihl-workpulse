@@ -14,10 +14,11 @@ import { DeskCardModule } from "../modules/desk-card/desk-card.module";
 import { EmployeeModule } from "../modules/employee/employee.module";
 import { ReferenceModule } from "../modules/reference/reference.module";
 import { TaskModule } from "../modules/task/task.module";
+import { AttachmentModule } from "../modules/attachment/attachment.module";
 import { TrpcService } from "./trpc.service";
 
 @Module({
-  imports: [AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule],
+  imports: [AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule, AttachmentModule],
   providers: [TrpcService],
   exports: [TrpcService],
 })

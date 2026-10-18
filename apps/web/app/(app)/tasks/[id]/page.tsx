@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc/client";
 import { DictateButton } from "@/components/dictate-button";
+import { AttachmentsPanel } from "@/components/task/attachments-panel";
 import { cn } from "@/lib/utils";
 
 /** Transitions a user can drive from the detail screen, and what to call them. */
@@ -371,6 +372,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
           </p>
         </CardContent>
       </Card>
+
+      <AttachmentsPanel taskId={id} taskStatus={task.status} />
 
       <Card>
         <CardHeader>

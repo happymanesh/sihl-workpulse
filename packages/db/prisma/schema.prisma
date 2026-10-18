@@ -59,6 +59,7 @@ model Employee {
   tasksAssigned   Task[]                  @relation("TaskAssignee")
   tasksReviewing  Task[]                  @relation("TaskReviewer")
   taskComments    TaskComment[]
+  taskAttachments TaskAttachment[]
   activitiesReviewing DeskCardActivity[] @relation("ActivityReviewer")
   timeBlocks      TimeBlock[]             @relation("TimeBlockOwner")
   capacityBudget  CapacityBudget?
@@ -169,6 +170,19 @@ model User {
   /// `isAuditRole` boolean alongside this: two places to express one fact is
   /// exactly how they drift apart.
   localRoles WorkPulseRole[]
+
+  /// Menu entries hidden from this person, by route (e.g. "/mis").
+  ///
+  /// Subtractive only, and presentation only. It can hide something the user's
+  /// roles would otherwise show; it can never reveal something they do not
+  /// have. What anybody may actually read is decided by roles on every
+  /// procedure and is untouched by this - a shorter menu is a tidier desk, not
+  /// a permission. Taking something away here and calling it access control is
+  /// exactly how a second, disagreeing permission model gets built.
+  ///
+  /// Routes rather than invented ids, because the route is already the unique
+  /// thing about a menu entry and nav.ts is its only definition.
+  hiddenNavKeys String[] @default([])
 
   lastSeenAt DateTime?
   createdAt  DateTime  @default(now())
@@ -557,6 +571,7 @@ model Task {
   slaPredictions      SlaPrediction[]
 
   comments       TaskComment[]
+  attachments    TaskAttachment[]
   checklistItems TaskChecklistItem[]
   statusHistory  TaskStatusHistory[]
   timeBlocks     TimeBlock[]
@@ -1817,3 +1832,56 @@ enum TaskCommentKind {
   COMPLETION
   REVIEW
 }
+
+/// A file attached to a task.
+///
+/// Immutable once stored. There is no update, and removal marks the row rather
+/// than deleting it: "what was attached when this was closed" has to give the
+/// same answer a year later, and a row that can vanish cannot answer it. The
+/// bytes are kept content-addressed by their SHA-256, so the same file attached
+/// twice costs one copy and a stored file can be checked against what arrived.
+///
+/// Evidence here is one of the three things the closure check looks for, the
+/// other two being a completed checklist item and a completion note.
+model TaskAttachment {
+  id     String @id @default(cuid())
+  taskId String
+  task   Task   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  uploadedByEmployeeId String
+  uploadedBy           Employee @relation(fields: [uploadedByEmployeeId], references: [id])
+  /// Kept alongside the employee so attribution survives an employee record
+  /// being re-synced or reassigned, exactly as on a comment.
+  uploadedByUserId     String?
+
+  /// The name the uploader's machine had. Display only - never used as a path.
+  fileName    String
+  contentType String
+  sizeBytes   Int
+  /// Hex SHA-256 of the bytes as received.
+  checksum    String
+  /// Path under the configured attachment root, derived from the checksum.
+  storageKey  String
+
+  /// What this file is for. EVIDENCE counts towards the closure check;
+  /// REFERENCE is working material that proves nothing on its own.
+  kind TaskAttachmentKind @default(EVIDENCE)
+
+  /// Set when somebody withdraws the file. The row and the stored bytes stay:
+  /// the trail records that it was attached, by whom, and why it was withdrawn.
+  removedAt       DateTime?
+  removedByUserId String?
+  removalReason   String?
+
+  createdAt DateTime @default(now())
+
+  @@index([taskId, createdAt])
+  @@index([checksum])
+  @@map("task_attachments")
+}
+
+enum TaskAttachmentKind {
+  EVIDENCE
+  REFERENCE
+}
+
