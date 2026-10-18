@@ -251,11 +251,20 @@ export class DeskCardService {
     return after;
   }
 
-  /** The desk card held by the calling user, if any. Powers their own view. */
+  /**
+   * Every desk card the calling user holds.
+   *
+   * Plural on purpose. holderEmployeeId is not unique and somebody can
+   * legitimately hold two seats - a Compliance Officer who is also Risk
+   * Committee Secretary - and this used findFirst, so the second card and every
+   * obligation on it were invisible to the person carrying them.
+   */
   async findMine(actor: AuthenticatedUser) {
-    if (!actor.employeeId) return null;
-    return prisma.deskCard.findFirst({
+    if (!actor.employeeId) return [];
+    return prisma.deskCard.findMany({
       where: { holderEmployeeId: actor.employeeId, status: { not: ApprovalStatus.RETIRED } },
+      // Deterministic, so two cards do not swap places between visits.
+      orderBy: [{ holderSince: "desc" }, { code: "asc" }],
       include: {
         department: { select: { id: true, name: true } },
         activities: {

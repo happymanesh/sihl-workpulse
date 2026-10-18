@@ -5,7 +5,7 @@ import { PriorityTag, type Priority } from "@/components/task/task-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { trpc } from "@/lib/trpc/client";
+import { trpc, type RouterOutputs } from "@/lib/trpc/client";
 
 /** Occurrences per week, used to express committed load in a comparable unit. */
 const PER_WEEK: Record<string, number> = {
@@ -52,9 +52,9 @@ export default function MyDeskCardPage() {
     );
   }
 
-  const card = query.data;
+  const cards = query.data ?? [];
 
-  if (!card) {
+  if (cards.length === 0) {
     return (
       <Card className="flex flex-col items-center gap-2 px-6 py-14 text-center">
         <p className="text-sm font-medium">No desk card assigned</p>
@@ -66,6 +66,38 @@ export default function MyDeskCardPage() {
     );
   }
 
+  return (
+    <div className="flex flex-col gap-6">
+      {cards.length > 1 && (
+        <p className="text-xs text-muted-foreground">
+          You hold {cards.length} desk cards. Each one is a seat with its own obligations — they
+          transfer separately when either changes hands.
+        </p>
+      )}
+
+      {cards.map((card) => (
+        <DeskCardBlock
+          key={card.id}
+          card={card}
+          onAcknowledge={() => acknowledge.mutate({ id: card.id })}
+          acknowledging={acknowledge.isPending}
+        />
+      ))}
+    </div>
+  );
+}
+
+type MyDeskCard = RouterOutputs["deskCard"]["mine"][number];
+
+function DeskCardBlock({
+  card,
+  onAcknowledge,
+  acknowledging,
+}: {
+  card: MyDeskCard;
+  onAcknowledge: () => void;
+  acknowledging: boolean;
+}) {
   const weeklyMinutes = card.activities.reduce((total, a) => {
     if (!a.frequency) return total;
     const occurrences = (PER_WEEK[a.frequency] ?? 0) / Math.max(a.interval, 1);
@@ -85,8 +117,8 @@ export default function MyDeskCardPage() {
             {card.acknowledgedAt ? (
               <Badge tone="success">Acknowledged</Badge>
             ) : (
-              <Button size="sm" onClick={() => acknowledge.mutate({ id: card.id })} disabled={acknowledge.isPending}>
-                {acknowledge.isPending ? "Saving…" : "Acknowledge"}
+              <Button size="sm" onClick={onAcknowledge} disabled={acknowledging}>
+                {acknowledging ? "Saving…" : "Acknowledge"}
               </Button>
             )}
           </div>
@@ -95,10 +127,7 @@ export default function MyDeskCardPage() {
         <CardContent className="flex flex-wrap gap-x-10 gap-y-3">
           <Metric label="Activities" value={String(card.activities.length)} />
           <Metric label="Committed / week" value={`${(weeklyMinutes / 60).toFixed(1)} h`} />
-          <Metric
-            label="Recurring"
-            value={String(card.activities.filter((a) => a.frequency).length)}
-          />
+          <Metric label="Recurring" value={String(card.activities.filter((a) => a.frequency).length)} />
         </CardContent>
       </Card>
 
@@ -148,7 +177,7 @@ export default function MyDeskCardPage() {
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex items-center gap-1 text-xs tabular text-muted-foreground">
                       <Clock className="size-3" aria-hidden="true" />
-                      {a.estimatedMinutes} min
+                      {a.estimatedMinutes}m
                     </span>
                   </td>
                   <td className="px-4 py-2.5">
@@ -159,7 +188,7 @@ export default function MyDeskCardPage() {
               {card.activities.length === 0 && (
                 <tr>
                   <td colSpan={5} className="px-4 py-10 text-center text-xs text-muted-foreground">
-                    No approved activities on this card yet.
+                    No approved activities on this card yet, so it generates no work.
                   </td>
                 </tr>
               )}
@@ -167,11 +196,6 @@ export default function MyDeskCardPage() {
           </table>
         </div>
       </Card>
-
-      <p className="text-xs text-muted-foreground">
-        Estimated effort is set by your Department Head and changes are audited. If a figure looks wrong, raise a
-        revision request rather than editing it — that keeps capacity data comparable across the team.
-      </p>
     </div>
   );
 }

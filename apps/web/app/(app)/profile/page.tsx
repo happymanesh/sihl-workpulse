@@ -44,8 +44,10 @@ export default function ProfilePage() {
             </Field>
             <Field label="Company">{user?.companyCode ?? "—"}</Field>
             <Field label="Hierarchy">{user?.hierarchyCode ?? "—"}</Field>
-            <Field label="Desk card">
-              {deskCard.data ? deskCard.data.name : "none held"}
+            <Field label="Desk cards">
+              {(deskCard.data ?? []).length === 0
+                ? "none held"
+                : (deskCard.data ?? []).map((c) => c.name).join(", ")}
             </Field>
           </div>
         </CardContent>

@@ -1,3 +1,4 @@
+import type { inferRouterOutputs } from "@trpc/server";
 import { createTRPCReact } from "@trpc/react-query";
 import type { AppRouter } from "@workpulse/api/trpc/trpc.service";
 
@@ -7,6 +8,13 @@ import type { AppRouter } from "@workpulse/api/trpc/trpc.service";
  * as a type error here rather than a runtime 400.
  */
 export const trpc = createTRPCReact<AppRouter>();
+
+/**
+ * What each procedure returns, for typing components that take a row rather
+ * than fetching it themselves. Derived from the router, so a shape change
+ * surfaces here instead of as an undefined at runtime.
+ */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;
 
 /**
  * Requests go to the Next dev/prod server and are proxied to the API by the
