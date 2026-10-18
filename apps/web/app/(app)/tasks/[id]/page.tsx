@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc } from "@/lib/trpc/client";
+import { DictateButton } from "@/components/dictate-button";
 import { cn } from "@/lib/utils";
 
 /** Transitions a user can drive from the detail screen, and what to call them. */
@@ -43,6 +44,28 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
   const transitions = trpc.reference.taskTransitions.useQuery();
   // For the blocking-owner picker.
   const staff = trpc.employee.list.useQuery({ activeOnly: true });
+  const comments = trpc.task.comments.useQuery({ taskId: id });
+
+  // A remark captured alongside a lifecycle move, and a standalone note. Kept
+  // apart because they mean different things: one is "what I did when I moved
+  // this", the other is "something worth saying about this task".
+  const [remark, setRemark] = useState("");
+  const [remarkDictated, setRemarkDictated] = useState(false);
+  const [remarkLanguage, setRemarkLanguage] = useState<string | null>(null);
+  const [note, setNote] = useState("");
+  const [noteDictated, setNoteDictated] = useState(false);
+  const [noteLanguage, setNoteLanguage] = useState<string | null>(null);
+
+  const addComment = trpc.task.addComment.useMutation({
+    onSuccess: () => {
+      setNote("");
+      setNoteDictated(false);
+      setNoteLanguage(null);
+      setError(null);
+      utils.task.comments.invalidate({ taskId: id });
+    },
+    onError: (e) => setError(e.message),
+  });
 
   const [pending, setPending] = useState<TaskStatus | null>(null);
   const [reason, setReason] = useState("");
@@ -54,7 +77,11 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       setPending(null);
       setReason("");
       setBlockingOwner("");
+      setRemark("");
+      setRemarkDictated(false);
+      setRemarkLanguage(null);
       setError(null);
+      utils.task.comments.invalidate({ taskId: id });
       utils.task.byId.invalidate({ id });
       utils.task.mine.invalidate();
     },
@@ -108,6 +135,9 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       reason: reason.trim() || undefined,
       blockedReason: to === "BLOCKED" ? reason.trim() : undefined,
       blockingOwnerEmployeeId: to === "BLOCKED" ? blockingOwner || undefined : undefined,
+      remark: remark.trim() || undefined,
+      remarkWasDictated: remark.trim() ? remarkDictated : undefined,
+      remarkLanguage: remark.trim() ? remarkLanguage : undefined,
     });
   }
 
@@ -275,6 +305,43 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           )}
 
+          {/* Optional on every move. The deck promises evidence attached to the
+              work; a remark written at the moment of acting is where most of
+              that comes from, and it is also what keeps a closure from being
+              flagged as having none. */}
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-muted/30 p-3">
+            <label htmlFor="remark" className="text-2xs font-medium text-muted-foreground">
+              Add a note with this change — optional
+            </label>
+            <textarea
+              id="remark"
+              rows={2}
+              value={remark}
+              onChange={(e) => {
+                setRemark(e.target.value);
+                if (remarkDictated) setRemarkDictated(false);
+              }}
+              placeholder="What you did, or anything the next person needs to know."
+              className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm"
+            />
+            <DictateButton
+              seconds={10}
+              disabled={transition.isPending}
+              onTranscript={(text, lang) => {
+                // Appended, never replacing: somebody who typed half a note and
+                // then dictated the rest should not lose the typed half.
+                setRemark((r) => (r.trim() ? `${r.trim()} ${text}` : text));
+                setRemarkDictated(true);
+                setRemarkLanguage(lang);
+              }}
+            />
+            {remarkDictated && (
+              <p className="text-2xs text-muted-foreground">
+                Dictated — read it back before saving. Transcription misreads names and numbers.
+              </p>
+            )}
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {available.map((a) => (
               <Button
@@ -302,6 +369,84 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             checked when you act — the API is still the authority, this just stops offering you what it would
             refuse.
           </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Notes</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col gap-3">
+          {(comments.data ?? []).map((c) => (
+            <div key={c.id} className="flex flex-col gap-1 border-b border-border pb-2 last:border-b-0">
+              <div className="flex flex-wrap items-baseline gap-2">
+                <span className="text-xs font-medium">{c.author.name}</span>
+                {c.author.designation && (
+                  <span className="text-2xs text-muted-foreground">{c.author.designation}</span>
+                )}
+                <Badge tone={c.kind === "GENERAL" ? "neutral" : "info"}>
+                  {c.kind.toLowerCase()}
+                </Badge>
+                {c.wasDictated && (
+                  <Badge tone="outline" title={c.dictatedLanguage ?? undefined}>
+                    dictated
+                  </Badge>
+                )}
+                <span className="ml-auto text-2xs text-muted-foreground tabular">
+                  {new Date(c.createdAt).toLocaleString()}
+                </span>
+              </div>
+              <p className="whitespace-pre-wrap text-sm">{c.body}</p>
+            </div>
+          ))}
+
+          {!comments.isLoading && (comments.data ?? []).length === 0 && (
+            <p className="text-xs text-muted-foreground">
+              No notes yet. A note left here is what an auditor reads alongside the dates.
+            </p>
+          )}
+
+          <div className="flex flex-col gap-2 pt-1">
+            <textarea
+              rows={2}
+              value={note}
+              onChange={(e) => {
+                setNote(e.target.value);
+                if (noteDictated) setNoteDictated(false);
+              }}
+              placeholder="Add a note…"
+              className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-sm"
+            />
+            <div className="flex flex-wrap items-center gap-3">
+              <DictateButton
+                seconds={10}
+                disabled={addComment.isPending}
+                onTranscript={(text, lang) => {
+                  setNote((n) => (n.trim() ? `${n.trim()} ${text}` : text));
+                  setNoteDictated(true);
+                  setNoteLanguage(lang);
+                }}
+              />
+              <Button
+                size="sm"
+                disabled={!note.trim() || addComment.isPending}
+                onClick={() =>
+                  addComment.mutate({
+                    taskId: id,
+                    body: note.trim(),
+                    wasDictated: noteDictated,
+                    dictatedLanguage: noteLanguage,
+                  })
+                }
+              >
+                Add note
+              </Button>
+            </div>
+            <p className="text-2xs text-muted-foreground">
+              Notes cannot be edited or deleted once added — correct one by adding another. That is
+              what makes them worth reading later.
+            </p>
+          </div>
         </CardContent>
       </Card>
 

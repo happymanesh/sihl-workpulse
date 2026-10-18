@@ -19,6 +19,7 @@ import { SlaModule } from "./modules/sla/sla.module";
 import { IntakeModule } from "./modules/intake/intake.module";
 import { LifecycleModule } from "./modules/lifecycle/lifecycle.module";
 import { AnalyticsModule } from "./modules/analytics/analytics.module";
+import { SpeechModule } from "./modules/speech/speech.module";
 import { CommandCentreModule } from "./modules/command-centre/command-centre.module";
 import { PredictionModule } from "./modules/prediction/prediction.module";
 import { AppraisalModule } from "./modules/appraisal/appraisal.module";
@@ -50,6 +51,7 @@ import { ChatHubModule } from "./modules/chat-hub/chat-hub.module";
     IntakeModule,
     LifecycleModule,
     AnalyticsModule,
+    SpeechModule,
     CommandCentreModule,
     PredictionModule,
     AppraisalModule,
