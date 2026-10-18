@@ -21,6 +21,7 @@
     "db:migrate:deploy": "npm run assert-target && prisma migrate deploy --schema packages/db/prisma/schema.prisma",
     "db:status": "prisma migrate status --schema packages/db/prisma/schema.prisma",
     "docs:guide": "node docs/build-user-guide.js",
+    "docs:pm-guide": "node docs/build-pm-guide.js",
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
     "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api"
