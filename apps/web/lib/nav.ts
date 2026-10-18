@@ -87,10 +87,27 @@ export const NAV_SECTIONS: NavSection[] = [
  *
  * A section with nothing left in it is dropped entirely, so somebody with only
  * EMPLOYEE does not get an "Administration" heading above empty space.
+ *
+ * `hidden` is the per-person list an administrator set, by route. It subtracts
+ * and only subtracts: an entry the roles do not grant cannot be brought back by
+ * leaving it out of this list. Neither filter is access control - the API
+ * decides what anybody may read, and a menu cannot change that.
  */
-export function visibleSections(roles: readonly string[]): NavSection[] {
+export function visibleSections(
+  roles: readonly string[],
+  hidden: readonly string[] = [],
+): NavSection[] {
   return NAV_SECTIONS.map((section) => ({
     ...section,
-    items: section.items.filter((i) => !i.roles || i.roles.some((r) => roles.includes(r))),
+    items: section.items.filter(
+      (i) => (!i.roles || i.roles.some((r) => roles.includes(r))) && !hidden.includes(i.href),
+    ),
   })).filter((section) => section.items.length > 0);
+}
+
+/** Every entry a given set of roles grants, flat - what an admin ticks through. */
+export function entriesForRoles(roles: readonly string[]): NavItem[] {
+  return NAV_SECTIONS.flatMap((s) => s.items).filter(
+    (i) => !i.roles || i.roles.some((r) => roles.includes(r)),
+  );
 }

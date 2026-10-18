@@ -20,6 +20,12 @@ export interface AuthenticatedUser {
   roles: WorkPulseRole[];
   employeeId: string | null;
   isEmployeeUnlinked: boolean;
+  /**
+   * Menu entries hidden for this person, by route. Presentation only - what
+   * they may actually read is decided by `roles` on every procedure, and
+   * nothing here widens it.
+   */
+  hiddenNavKeys: string[];
 }
 
 /**
@@ -74,7 +80,21 @@ export class IdentityService {
       roles,
       employeeId: user.employeeId,
       isEmployeeUnlinked: user.isEmployeeUnlinked,
+      hiddenNavKeys: user.hiddenNavKeys,
     };
+  }
+
+  /**
+   * The roles a user would resolve to right now, without signing them in.
+   *
+   * Used by screens that need to say what somebody else can reach - the same
+   * union as `resolve`, through the same mapping table, so an administrator is
+   * never shown a different answer from the one the guard would give.
+   */
+  async effectiveRoles(synapseUserUid: number, localRoles: WorkPulseRole[]): Promise<WorkPulseRole[]> {
+    const roleCodes = await this.directory.findRoleCodes(synapseUserUid);
+    const mapped = await this.mapRoles(roleCodes);
+    return Array.from(new Set<WorkPulseRole>([...mapped, ...localRoles]));
   }
 
   private async mapRoles(synapseRoleCodes: string[]): Promise<WorkPulseRole[]> {
@@ -130,6 +150,7 @@ export class IdentityService {
         employeeId: true,
         isEmployeeUnlinked: true,
         localRoles: true,
+        hiddenNavKeys: true,
       },
     });
   }

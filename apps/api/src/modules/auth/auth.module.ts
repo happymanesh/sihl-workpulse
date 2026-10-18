@@ -4,6 +4,7 @@ import { AuditModule } from "../audit/audit.module";
 import { RoleGrantService } from "./role-grant.service";
 import { RoleMapService } from "./role-map.service";
 import { IdentityService } from "./identity.service";
+import { MenuService } from "./menu.service";
 import { RolesGuard } from "./roles.guard";
 import { SynapseAuthGuard } from "./synapse-auth.guard";
 import { SynapseDirectoryService } from "./synapse-directory.service";
@@ -23,10 +24,11 @@ import { SynapseSessionService } from "./synapse-session.service";
     IdentityService,
     RoleGrantService,
     RoleMapService,
+    MenuService,
     // Order matters: authentication before authorization on every request.
     { provide: APP_GUARD, useClass: SynapseAuthGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
   ],
-  exports: [SynapseSessionService, SynapseDirectoryService, IdentityService, RoleGrantService, RoleMapService],
+  exports: [SynapseSessionService, SynapseDirectoryService, IdentityService, RoleGrantService, RoleMapService, MenuService],
 })
 export class AuthModule {}

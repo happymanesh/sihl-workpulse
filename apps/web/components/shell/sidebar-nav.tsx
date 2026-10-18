@@ -12,7 +12,7 @@ export function SidebarNav() {
   const me = trpc.meta.me.useQuery();
   // Until the session resolves, show only what everyone sees. Rendering the
   // full menu and then removing entries is worse than revealing them late.
-  const sections = visibleSections(me.data?.roles ?? []);
+  const sections = visibleSections(me.data?.roles ?? [], me.data?.hiddenNavKeys ?? []);
 
   return (
     <nav aria-label="Primary" className="flex flex-col gap-5 px-3 py-4">

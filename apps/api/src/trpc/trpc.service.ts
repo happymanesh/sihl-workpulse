@@ -44,6 +44,7 @@ import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
 import { TaskCommentService } from "../modules/task/task-comment.service";
 import { AttachmentService } from "../modules/attachment/attachment.service";
+import { MenuService } from "../modules/auth/menu.service";
 import { protectedProcedure, publicProcedure, requireRoles, router } from "./trpc";
 
 const MANAGEMENT_ROLES = [
@@ -76,6 +77,7 @@ export class TrpcService {
     private readonly taskService: TaskService,
     private readonly taskCommentService: TaskCommentService,
     private readonly attachmentService: AttachmentService,
+    private readonly menuService: MenuService,
     private readonly referenceService: ReferenceService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
@@ -1069,6 +1071,28 @@ export class TrpcService {
             }),
           )
           .mutation(({ ctx, input }) => this.roleGrantService.revoke(ctx.user, input)),
+
+        /**
+         * Per-person menus. Subtractive and presentation only - these cannot
+         * show anybody an entry their roles do not already grant, and what they
+         * may read is decided by those roles on every other procedure here.
+         */
+        menu: protectedProcedure
+          .input(z.object({ synapseUserUid: z.number().int().positive() }))
+          .query(({ ctx, input }) => this.menuService.forUser(ctx.user, input.synapseUserUid)),
+
+        /** Everyone with something hidden, so the practice stays reviewable. */
+        adjustedMenus: protectedProcedure.query(({ ctx }) => this.menuService.adjusted(ctx.user)),
+
+        setMenu: protectedProcedure
+          .input(
+            z.object({
+              synapseUserUid: z.number().int().positive(),
+              hiddenNavKeys: z.array(z.string().max(120)).max(50),
+              reason: z.string().max(500).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.menuService.setHidden(ctx.user, input)),
       }),
 
     });
