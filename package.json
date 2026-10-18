@@ -23,6 +23,7 @@
     "docs:guide": "node docs/build-user-guide.js",
     "docs:pm-guide": "node docs/build-pm-guide.js",
     "docs:manager-guide": "node docs/build-manager-guide.js",
+    "docs:admin-guide": "node docs/build-admin-guide.js",
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
     "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api"
