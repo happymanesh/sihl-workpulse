@@ -10,8 +10,14 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 
-const SHOTS = "C:/Users/ManeshMukherjee/.claude/projects/C--Projects-CentrumWebsite/87227dae-13e0-4a29-86b5-a10042f56276/tool-results/";
-const OUT = "C:/Projects/SIHL_workPulse/docs/workPulse-user-guide.pdf";
+const path = require("path");
+
+// Run from anywhere: everything is resolved against this file's own directory,
+// so `node docs/build-user-guide.js` rebuilds the guide from the images beside
+// it. Re-capture a screen into guide-images/ with the same name and the guide
+// picks it up - that is the point of keeping this script in the repository.
+const SHOTS = path.join(__dirname, "guide-images") + path.sep;
+const OUT = path.join(__dirname, "workPulse-user-guide.pdf");
 
 const NAVY = "#0f2d52";
 const RED = "#e11d48";
@@ -22,7 +28,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "Finding your way around",
-    img: "mcp-Claude_Browser-blob-1792314373429-7j1mpa.jpg",
+    img: "01-orientation.jpg",
     body: "workPulse opens on your own work. Everything is reached from the menu down the left; what you see there depends on your role, so your menu may be shorter than the one in this picture. That is normal.",
     marks: [
       "The menu. Your screens, grouped — your own work at the top, then anything your role adds.",
@@ -34,7 +40,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "Opening a task",
-    img: "mcp-Claude_Browser-blob-1792314490536-v90mu2.jpg",
+    img: "02-task-open.jpg",
     body: "Click any row to open it. The strip across the middle is the task's life so far — where it has been and where it is now. Work arrives Assigned and you take it from there.",
     marks: [
       "Accept says you have seen it and it is yours. Only the moves that are legal right now are offered; the rest are hidden rather than shown and refused.",
@@ -45,7 +51,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "Evidence: files and notes",
-    img: "mcp-Claude_Browser-blob-1792314525331-r9fim0.jpg",
+    img: "03-files-and-notes.jpg",
     body: "Work that is closed with nothing behind it gets flagged for review. Three things count as evidence, and any one of them is enough: a ticked checklist item, a file, or a note.",
     marks: [
       "Attach a file — up to 25 MB. Documents, spreadsheets, images and saved email. No zips, since a zip proves nothing until somebody opens it.",
@@ -58,7 +64,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "Your desk card",
-    img: "mcp-Claude_Browser-blob-1792314554460-fxclw3.jpg",
+    img: "04-my-desk-card.jpg",
     body: "A desk card is the seat, not the person. It lists the standing obligations that come with your role — and it is what generates your recurring work automatically. You may hold more than one.",
     marks: [
       "Acknowledge records that you have seen the card. It changes nothing about what is generated; work continues either way.",
@@ -69,7 +75,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "The board",
-    img: "mcp-Claude_Browser-blob-1792314577194-7p3rwn.jpg",
+    img: "05-board.jpg",
     body: "The same work as a board, by status. Useful first thing in the morning when you want to see what is waiting rather than read a list.",
     marks: [
       "Every card has a Move to… control for the moves that are legal from where it currently is.",
@@ -79,7 +85,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "The calendar, and blocking time",
-    img: "mcp-Claude_Browser-blob-1792314597945-pjrxnq.jpg",
+    img: "06-calendar.jpg",
     body: "Your week. The bar at the top shows what your desk card has committed you to, against the capacity your manager has set.",
     marks: [
       "Pick the task you are about to work on.",
@@ -90,7 +96,7 @@ const steps = [
   {
     part: "Part 1 — Everybody",
     title: "Your own numbers",
-    img: "mcp-Claude_Browser-blob-1792314614621-0wefv5.jpg",
+    img: "07-my-performance.jpg",
     body: "You see your figures at the same time and in the same form as your manager and HR. There is no manager-only view of your performance.",
     marks: [
       "Below a minimum volume, nothing is reported rather than a low score shown. A month on leave and a difficult month would otherwise look identical.",
@@ -101,7 +107,7 @@ const steps = [
   {
     part: "Part 2 — Managers",
     title: "Team workload",
-    img: "mcp-Claude_Browser-blob-1792314625663-53b771.jpg",
+    img: "08-team-workload.jpg",
     body: "Who is carrying what, in one table: open work, how much is critical, what is overdue, what is blocked and on whom.",
     marks: [
       "Set capacity against a person to say what a reasonable week looks like for them. Until that is set, over-capacity cannot be calculated and nobody is reported as overloaded.",
@@ -110,7 +116,7 @@ const steps = [
   {
     part: "Part 2 — Managers",
     title: "When somebody leaves or moves",
-    img: "mcp-Claude_Browser-blob-1792314653826-os0ke8.jpg",
+    img: "09-handover.jpg",
     body: "Handover builds the list from live data rather than from memory — desk cards held, open tasks, roles on projects, delegations. Anything they genuinely picked up this week is in it.",
     marks: [
       "Who is moving.",
@@ -123,7 +129,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Desk cards",
-    img: "mcp-Claude_Browser-blob-1792314665232-vrexx1.jpg",
+    img: "10-desk-cards.jpg",
     body: "Every recurring obligation in the firm lives on a desk card. This is where they are created and who holds them is recorded.",
     marks: [
       "The cards, their department, who holds each one and whether it is approved.",
@@ -133,7 +139,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Inside a desk card",
-    img: "mcp-Claude_Browser-blob-1792314694501-4p9we5.jpg",
+    img: "11-desk-card-detail.jpg",
     body: "The activities on a card are what generate the work. Each one names the control it serves, so nobody is ever left answering \u201cwhy does this task exist?\u201d with a shrug.",
     marks: [
       "Transfer the card to somebody else. A reason is required and the history is kept rather than overwritten.",
@@ -145,7 +151,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Changing an activity",
-    img: "mcp-Claude_Browser-blob-1792314704700-qeew2k.jpg",
+    img: "12-amend-activity.jpg",
     body: "Corrections are made in place rather than by retiring the activity and creating a new one. What a change counts as depends on what it does, not on which field moved.",
     marks: [
       "Wording — a typo or a clearer title. No reason asked.",
@@ -158,7 +164,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Policies and processes",
-    img: "mcp-Claude_Browser-blob-1792314720805-axmdlp.jpg",
+    img: "13-policies-processes.jpg",
     body: "Work hangs off a named control. Create the process first where there is one; an activity cannot be approved until it serves one.",
     marks: [
       "The chain: desk card \u2192 activity \u2192 process \u2192 policy.",
@@ -169,7 +175,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Who can reach what",
-    img: "mcp-Claude_Browser-blob-1792314748719-7um9h5.jpg",
+    img: "14-access-coverage.jpg",
     body: "Roles come from Synapse. workPulse maps a Synapse role onto a workPulse role once, org-wide, and re-reads it on every request — so revoking somebody's role takes effect on their next click, not when their session expires.",
     marks: [
       "A role nobody can reach. The controls behind it cannot be exercised by anyone, so this has to be fixed before go-live rather than discovered during it.",
@@ -180,7 +186,7 @@ const steps = [
   {
     part: "Part 3 — Administrators",
     title: "Giving somebody a shorter menu",
-    img: "mcp-Claude_Browser-blob-1792314739352-jhzqih.jpg",
+    img: "15-menus.jpg",
     body: "If a team should open workPulse and see four things rather than fourteen, untick the rest. The list offered is exactly what that person's roles already grant.",
     marks: [
       "Who you are adjusting. Their roles are shown beneath.",
@@ -193,7 +199,7 @@ const steps = [
   {
     part: "Everyday",
     title: "Your account",
-    img: "mcp-Claude_Browser-blob-1792314759981-4s1ej7.jpg",
+    img: "16-account-menu.jpg",
     body: "Everything about you sits behind your initials, top right.",
     marks: [
       "Profile shows who workPulse thinks you are and where each fact came from. Settings holds light or dark. Signing out returns you to Synapse and leaves you signed in there.",
@@ -202,7 +208,7 @@ const steps = [
   {
     part: "Everyday",
     title: "More room when you need it",
-    img: "mcp-Claude_Browser-blob-1792314780371-7oky3r.jpg",
+    img: "17-collapsed-menu.jpg",
     body: "Collapsed, the menu keeps its icons rather than disappearing, so you can still see where you are and still get anywhere in one click. Hover an icon for its name.",
     marks: [
       "The rail. Your current screen stays highlighted.",

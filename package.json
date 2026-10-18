@@ -20,6 +20,7 @@
     "db:migrate": "npm run assert-target && prisma migrate dev --schema packages/db/prisma/schema.prisma",
     "db:migrate:deploy": "npm run assert-target && prisma migrate deploy --schema packages/db/prisma/schema.prisma",
     "db:status": "prisma migrate status --schema packages/db/prisma/schema.prisma",
+    "docs:guide": "node docs/build-user-guide.js",
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
     "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api"
@@ -27,6 +28,7 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "dotenv": "^16.4.5",
+    "pdfkit": "^0.20.2",
     "prisma": "^5.14.0",
     "tsx": "^4.10.0",
     "typescript": "^5.4.5"
