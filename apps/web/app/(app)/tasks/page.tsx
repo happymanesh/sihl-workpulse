@@ -5,6 +5,7 @@ import { useState } from "react";
 import { DueDate, PriorityTag, StatusBadge, type Priority, type TaskStatus } from "@/components/task/task-badges";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { NewTask } from "@/components/task/new-task";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 
@@ -32,6 +33,7 @@ export default function MyTasksPage() {
             </button>
           ))}
         </div>
+        <NewTask onCreated={() => query.refetch()} />
         {query.data && (
           <span className="text-xs text-muted-foreground tabular">
             {query.data.length} task{query.data.length === 1 ? "" : "s"}

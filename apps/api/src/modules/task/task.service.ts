@@ -450,4 +450,234 @@ export class TaskService {
 
     return after;
   }
+
+  // ---- Reassignment and correction --------------------------------------
+
+  /** Managers and above. The assignee moving their own work away is the thing
+   *  this is designed to make visible, not a convenience to offer them. */
+  private canDirect(actor: AuthenticatedUser): boolean {
+    return (
+      actor.roles.includes(WorkPulseRole.MANAGER) ||
+      actor.roles.includes(WorkPulseRole.DEPARTMENT_HEAD) ||
+      actor.roles.includes(WorkPulseRole.SYSTEM_ADMIN)
+    );
+  }
+
+  private static readonly SETTLED: TaskStatus[] = [TaskStatus.CLOSED, TaskStatus.CANCELLED];
+
+  /**
+   * Work that has been handed on for checking, or finished. Reassigning any of
+   * these would send the task back to Assigned and quietly undo a completion
+   * somebody has already put their name to - so it is refused, and the manager
+   * is told to reopen it first. Reopening is itself recorded, which is the
+   * point: undoing a completion should leave a mark.
+   */
+  private static readonly HANDED_ON: TaskStatus[] = [
+    TaskStatus.PENDING_REVIEW,
+    TaskStatus.COMPLETED,
+    TaskStatus.VERIFIED,
+  ];
+
+  /**
+   * Move a task to somebody else.
+   *
+   * The audit row is deliberately shaped for the anti-gaming detector, which
+   * has always read `action: "REASSIGN"` with the previous assignee in
+   * `before` and has never had anything to find: repeatedly pushing overdue
+   * work off one person and onto another is a pattern worth seeing, and it is
+   * only visible if reassignment is recorded rather than done by hand in the
+   * database.
+   *
+   * The task returns to Assigned. Whoever receives it has not accepted it, and
+   * carrying the previous holder's acceptance across would put their name
+   * against a commitment they never made.
+   */
+  async reassign(
+    actor: AuthenticatedUser,
+    input: { taskId: string; toEmployeeId: string; reason: string },
+  ) {
+    if (!this.canDirect(actor)) {
+      throw new ForbiddenException(
+        "Reassigning work requires a manager or above. Ask yours rather than moving it yourself.",
+      );
+    }
+    if (!input.reason?.trim()) {
+      throw new BadRequestException("Reassigning needs a reason — it is recorded against both people");
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: input.taskId },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        assigneeEmployeeId: true,
+        reviewerEmployeeId: true,
+      },
+    });
+    if (!task) throw new NotFoundException("Task not found");
+
+    if (TaskService.SETTLED.includes(task.status)) {
+      throw new BadRequestException(
+        `${task.reference} is ${task.status.toLowerCase()}, so there is nothing to reassign.`,
+      );
+    }
+    if (TaskService.HANDED_ON.includes(task.status)) {
+      throw new BadRequestException(
+        `${task.reference} has already been completed or sent for review. Reopen it first — moving it now would undo a completion somebody signed their name to.`,
+      );
+    }
+    if (task.assigneeEmployeeId === input.toEmployeeId) {
+      throw new BadRequestException("That is already the assignee");
+    }
+
+    const to = await prisma.employee.findUnique({
+      where: { id: input.toEmployeeId },
+      select: { id: true, name: true, isActive: true },
+    });
+    if (!to) throw new NotFoundException("That employee does not exist");
+    if (!to.isActive) {
+      throw new BadRequestException(`${to.name} is no longer active, so work cannot be moved to them.`);
+    }
+    if (task.reviewerEmployeeId === input.toEmployeeId) {
+      throw new BadRequestException(
+        `${to.name} reviews this task. The same person cannot do the work and check it — change the reviewer first.`,
+      );
+    }
+
+    const wasStarted = task.status !== TaskStatus.ASSIGNED && task.status !== TaskStatus.DRAFT;
+
+    const after = await prisma.$transaction(async (tx) => {
+      const updated = await tx.task.update({
+        where: { id: input.taskId },
+        data: {
+          assigneeEmployeeId: input.toEmployeeId,
+          status: TaskStatus.ASSIGNED,
+          startedAt: null,
+        },
+      });
+
+      // The lifecycle trail has to show the step back to Assigned, or the
+      // history reads as if the new holder accepted work they never saw.
+      if (wasStarted) {
+        await tx.taskStatusHistory.create({
+          data: {
+            taskId: input.taskId,
+            fromStatus: task.status,
+            toStatus: TaskStatus.ASSIGNED,
+            actorUserId: actor.id,
+            reason: `Reassigned to ${to.name}: ${input.reason.trim()}`,
+          },
+        });
+      }
+
+      return updated;
+    });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: input.taskId,
+      action: "REASSIGN",
+      actorId: actor.id,
+      before: { assigneeEmployeeId: task.assigneeEmployeeId, status: task.status },
+      after: { assigneeEmployeeId: input.toEmployeeId, status: after.status },
+      reason: input.reason.trim(),
+    });
+
+    return after;
+  }
+
+  /**
+   * Correct a task that is already running.
+   *
+   * Due date is singled out: moving it is the simplest way to make overdue
+   * work stop looking overdue, so it always needs a reason and the old date is
+   * kept beside the new one. Everything else here is ordinary correction, and
+   * all of it is refused once the task is closed - editing a settled record is
+   * rewriting what happened.
+   */
+  async update(
+    actor: AuthenticatedUser,
+    input: {
+      taskId: string;
+      dueDate?: Date;
+      priority?: Priority;
+      complexity?: Complexity | null;
+      reviewerEmployeeId?: string | null;
+      reason?: string;
+    },
+  ) {
+    if (!this.canDirect(actor)) {
+      throw new ForbiddenException("Changing a task requires a manager or above");
+    }
+
+    const before = await prisma.task.findUnique({
+      where: { id: input.taskId },
+      select: {
+        id: true,
+        reference: true,
+        status: true,
+        dueDate: true,
+        priority: true,
+        complexity: true,
+        assigneeEmployeeId: true,
+        reviewerEmployeeId: true,
+      },
+    });
+    if (!before) throw new NotFoundException("Task not found");
+
+    if (TaskService.SETTLED.includes(before.status)) {
+      throw new BadRequestException(
+        `${before.reference} is ${before.status.toLowerCase()}. A settled task is not edited — reopen it if it was wrong.`,
+      );
+    }
+
+    const movesDueDate =
+      input.dueDate !== undefined && input.dueDate.getTime() !== before.dueDate.getTime();
+    if (movesDueDate && !input.reason?.trim()) {
+      throw new BadRequestException(
+        "Moving a due date needs a reason. It is the easiest way to make late work look on time, so it is never silent.",
+      );
+    }
+
+    if (input.reviewerEmployeeId && input.reviewerEmployeeId === before.assigneeEmployeeId) {
+      throw new BadRequestException(
+        "The assignee cannot review their own work. Choose somebody else.",
+      );
+    }
+
+    const after = await prisma.task.update({
+      where: { id: input.taskId },
+      data: {
+        ...(input.dueDate !== undefined ? { dueDate: input.dueDate } : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.complexity !== undefined ? { complexity: input.complexity } : {}),
+        ...(input.reviewerEmployeeId !== undefined
+          ? { reviewerEmployeeId: input.reviewerEmployeeId }
+          : {}),
+      },
+    });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: input.taskId,
+      action: movesDueDate ? "due_date_moved" : "updated",
+      actorId: actor.id,
+      before: {
+        dueDate: before.dueDate,
+        priority: before.priority,
+        complexity: before.complexity,
+        reviewerEmployeeId: before.reviewerEmployeeId,
+      },
+      after: {
+        dueDate: after.dueDate,
+        priority: after.priority,
+        complexity: after.complexity,
+        reviewerEmployeeId: after.reviewerEmployeeId,
+      },
+      reason: input.reason?.trim(),
+    });
+
+    return after;
+  }
 }

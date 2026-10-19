@@ -776,6 +776,34 @@ export class TrpcService {
           )
           .mutation(({ ctx, input }) => this.taskService.transition(ctx.user, input)),
 
+        /**
+         * Move work to somebody else. Audited as REASSIGN, which is what the
+         * anti-gaming detector has always looked for and never found.
+         */
+        reassign: requireRoles(...MANAGEMENT_ROLES)
+          .input(
+            z.object({
+              taskId: z.string(),
+              toEmployeeId: z.string(),
+              reason: z.string().min(3).max(1000),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.taskService.reassign(ctx.user, input)),
+
+        /** Correct a running task. Moving a due date always needs a reason. */
+        update: requireRoles(...MANAGEMENT_ROLES)
+          .input(
+            z.object({
+              taskId: z.string(),
+              dueDate: z.date().optional(),
+              priority: z.nativeEnum(Priority).optional(),
+              complexity: z.nativeEnum(Complexity).nullish(),
+              reviewerEmployeeId: z.string().nullish(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.taskService.update(ctx.user, input)),
+
         comments: protectedProcedure
           .input(z.object({ taskId: z.string() }))
           .query(({ ctx, input }) => this.taskCommentService.list(ctx.user, input.taskId)),
