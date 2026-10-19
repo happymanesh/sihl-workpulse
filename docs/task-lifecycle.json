@@ -1,0 +1,84 @@
+{
+  "allowed": {
+    "DRAFT": [
+      "ASSIGNED",
+      "CANCELLED"
+    ],
+    "ASSIGNED": [
+      "ACCEPTED",
+      "REJECTED",
+      "IN_PROGRESS",
+      "CANCELLED",
+      "ON_HOLD",
+      "DEFERRED"
+    ],
+    "ACCEPTED": [
+      "IN_PROGRESS",
+      "BLOCKED",
+      "CANCELLED",
+      "ON_HOLD",
+      "DEFERRED"
+    ],
+    "IN_PROGRESS": [
+      "BLOCKED",
+      "PENDING_REVIEW",
+      "COMPLETED",
+      "CANCELLED",
+      "ON_HOLD",
+      "DEFERRED"
+    ],
+    "BLOCKED": [
+      "IN_PROGRESS",
+      "CANCELLED",
+      "ON_HOLD"
+    ],
+    "PENDING_REVIEW": [
+      "COMPLETED",
+      "VERIFIED",
+      "REJECTED",
+      "IN_PROGRESS"
+    ],
+    "COMPLETED": [
+      "VERIFIED",
+      "CLOSED",
+      "REJECTED",
+      "REOPENED"
+    ],
+    "VERIFIED": [
+      "CLOSED",
+      "REOPENED"
+    ],
+    "CLOSED": [
+      "REOPENED"
+    ],
+    "REJECTED": [
+      "ASSIGNED",
+      "IN_PROGRESS",
+      "CANCELLED"
+    ],
+    "REOPENED": [
+      "IN_PROGRESS",
+      "ASSIGNED",
+      "CANCELLED"
+    ],
+    "CANCELLED": [],
+    "ON_HOLD": [
+      "IN_PROGRESS",
+      "ASSIGNED",
+      "CANCELLED"
+    ],
+    "DEFERRED": [
+      "ASSIGNED",
+      "IN_PROGRESS",
+      "CANCELLED"
+    ]
+  },
+  "reasonRequired": [
+    "REJECTED",
+    "REOPENED",
+    "CANCELLED",
+    "BLOCKED",
+    "ON_HOLD",
+    "DEFERRED"
+  ]
+}
