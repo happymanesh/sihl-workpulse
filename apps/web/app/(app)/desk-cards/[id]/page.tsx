@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
+import { WorkflowEditor } from "@/components/desk-card/workflow-editor";
 import { trpc, type RouterOutputs } from "@/lib/trpc/client";
 
 const STATUS_TONE = { DRAFT: "neutral", PENDING_REVIEW: "warning", APPROVED: "success", RETIRED: "neutral" } as const;
@@ -44,6 +45,9 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
   // Which activity is open for editing. Held on the page so only one row is
   // ever open at a time; the pending changes live in the editor itself.
   const [editing, setEditing] = useState<string | null>(null);
+  // Which activity's procedure is open. Separate from `editing` so a person can
+  // read the steps while deciding what to amend.
+  const [steps, setSteps] = useState<string | null>(null);
   const amend = trpc.activity.amend.useMutation({
     onSuccess: (r) => {
       setEditing(null);
@@ -219,6 +223,14 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                         <Button
                           size="sm"
                           variant="ghost"
+                          onClick={() => setSteps(steps === a.id ? null : a.id)}
+                          title="The procedure this work follows"
+                        >
+                          {steps === a.id ? "Hide steps" : "Steps"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
                           onClick={() => setEditing(editing === a.id ? null : a.id)}
                         >
                           {editing === a.id ? "Cancel" : "Edit"}
@@ -226,6 +238,13 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                       </div>
                     </td>
                   </tr>
+                  {steps === a.id && (
+                    <WorkflowEditor
+                      activityId={a.id}
+                      activityTitle={a.title}
+                      onError={setError}
+                    />
+                  )}
                   {editing === a.id && (
                     <ActivityEditor
                       activity={a}
