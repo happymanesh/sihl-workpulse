@@ -4,6 +4,8 @@ import { Info, TriangleAlert } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/shell/theme-toggle";
+import { HelpFaqs } from "@/components/profile/help-faqs";
+import type { RoleName } from "@/lib/nav";
 import { trpc } from "@/lib/trpc/client";
 
 /**
@@ -101,7 +103,7 @@ export default function ProfilePage() {
       </Card>
 
       <Card id="support">
-        <CardContent className="flex flex-col gap-2 py-4">
+        <CardContent className="flex flex-col gap-3 py-4">
           <span className="label-caps">Help and support</span>
           <p className="max-w-2xl text-xs text-muted-foreground">
             Your department&apos;s workPulse helper is the first port of call — they are named before
@@ -112,6 +114,10 @@ export default function ProfilePage() {
             wrong, raise it with HR or Audit directly rather than only with your manager. That route
             is deliberate.
           </p>
+
+          <div className="mt-1 border-t border-border pt-3">
+            <HelpFaqs roles={(user?.roles ?? []) as RoleName[]} />
+          </div>
         </CardContent>
       </Card>
     </div>
