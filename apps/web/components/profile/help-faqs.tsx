@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/field";
 import {
   AUDIENCE_LABEL,
+  AUDIENCE_NOTE,
   AUDIENCE_ROLES,
   HELP_FAQS,
   type HelpAudience,
@@ -14,7 +15,7 @@ import {
 } from "@/lib/help-faqs";
 import type { RoleName } from "@/lib/nav";
 
-const ORDER: HelpAudience[] = ["everyone", "managers", "projects", "administrators"];
+const ORDER: HelpAudience[] = ["everyone", "managers", "governance", "projects", "administrators"];
 
 /**
  * The answers to the questions people actually ask, on the page they land on
@@ -89,9 +90,14 @@ export function HelpFaqs({ roles }: { roles: RoleName[] }) {
         if (group.length === 0) return null;
         return (
           <section key={audience} className="flex flex-col gap-1.5">
-            <div className="flex items-center gap-2 pt-1">
-              <span className="label-caps">{AUDIENCE_LABEL[audience]}</span>
-              {!relevant(audience) && <Badge tone="neutral">not your role</Badge>}
+            <div className="flex flex-col gap-0.5 pt-1">
+              <div className="flex items-center gap-2">
+                <span className="label-caps">{AUDIENCE_LABEL[audience]}</span>
+                {!relevant(audience) && <Badge tone="neutral">not your role</Badge>}
+              </div>
+              {AUDIENCE_NOTE[audience] && (
+                <span className="text-2xs text-muted-foreground">{AUDIENCE_NOTE[audience]}</span>
+              )}
             </div>
             {group.map((faq) => (
               <FaqRow

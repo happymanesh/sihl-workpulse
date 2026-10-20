@@ -18,7 +18,13 @@ import type { RoleName } from "@/lib/nav";
  * Images are the same annotated screens as the printed guides, so a person who
  * has read one recognises the other.
  */
-export type HelpAudience = "everyone" | "managers" | "projects" | "administrators";
+/**
+ * "managers" and "governance" are separated because the system separates them.
+ * A manager runs the work; a department head defines what the work is. Showing
+ * a manager how to create a desk card would send them to a button that refuses
+ * them, which is exactly the confusion these answers exist to remove.
+ */
+export type HelpAudience = "everyone" | "managers" | "governance" | "projects" | "administrators";
 
 export interface HelpFaq {
   id: string;
@@ -33,15 +39,24 @@ export interface HelpFaq {
 /** Which workPulse roles each audience is written for. */
 export const AUDIENCE_ROLES: Record<Exclude<HelpAudience, "everyone">, RoleName[]> = {
   managers: ["MANAGER", "DEPARTMENT_HEAD", "SYSTEM_ADMIN"],
+  // Desk cards, activities, procedures and SLA targets are all governance.
+  governance: ["DEPARTMENT_HEAD", "SYSTEM_ADMIN"],
   projects: ["PROJECT_MANAGER", "DEPARTMENT_HEAD", "SYSTEM_ADMIN"],
   administrators: ["SYSTEM_ADMIN", "DEPARTMENT_HEAD"],
 };
 
 export const AUDIENCE_LABEL: Record<HelpAudience, string> = {
   everyone: "Everyone",
-  managers: "If you run a team",
+  managers: "If you run a team's work",
+  governance: "If you define what a team is responsible for",
   projects: "If you run a project",
   administrators: "If you administer the system",
+};
+
+/** Shown beside an audience so nobody has to infer it. */
+export const AUDIENCE_NOTE: Partial<Record<HelpAudience, string>> = {
+  managers: "Managers and above.",
+  governance: "Department heads and administrators only — a manager is refused these.",
 };
 
 export const HELP_FAQS: HelpFaq[] = [
@@ -143,10 +158,10 @@ export const HELP_FAQS: HelpFaq[] = [
     ],
   },
 
-  // ---------------------------------------------------------------- managers
+  // ------------------------------------------------- managers and governance
   {
     id: "activity-wont-approve",
-    audience: "managers",
+    audience: "governance",
     question: "My activity will not approve. What is it waiting for?",
     answer: [
       "Two prerequisites catch people out, and the screen says which one is missing. Every activity needs a control — the policy or process it serves. Critical and verified work needs an approved written procedure as well.",
@@ -156,7 +171,7 @@ export const HELP_FAQS: HelpFaq[] = [
   },
   {
     id: "write-procedure",
-    audience: "managers",
+    audience: "governance",
     question: "How do I write the procedure it is asking for?",
     answer: [
       "Open the activity's row on the desk card and choose Steps. Write them in the order they are actually done, with a rough time against each — they are what the person doing the work ticks off and what a reviewer checks against.",
@@ -178,7 +193,7 @@ export const HELP_FAQS: HelpFaq[] = [
   },
   {
     id: "wrong-department",
-    audience: "managers",
+    audience: "governance",
     question: "A desk card is in the wrong department. Does it matter?",
     answer: [
       "Yes, more than it looks. A task takes its department from the card, not from whoever holds it, so the department decides which SLA targets apply and whose head is escalated to on a breach. A card in the wrong department quietly sends every breach to the wrong person.",
@@ -188,7 +203,7 @@ export const HELP_FAQS: HelpFaq[] = [
   },
   {
     id: "sla",
-    audience: "managers",
+    audience: "governance",
     question: "Why is the At risk screen empty?",
     answer: [
       "Because nothing has been promised yet. At risk shows work approaching an SLA target, so with no targets configured there is nothing for it to warn about.",
