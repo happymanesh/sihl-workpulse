@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Fragment, use, useState } from "react";
-import { ArrowLeft, Pause, Play, Plus } from "lucide-react";
+import { ArrowLeft, Pause, Pencil, Play, Plus } from "lucide-react";
 import { PriorityTag, type Priority } from "@/components/task/task-badges";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -36,6 +36,14 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
 
   const setStatus = trpc.deskCard.setStatus.useMutation({ onSuccess: refresh, onError });
   const transfer = trpc.deskCard.transferHolder.useMutation({ onSuccess: refresh, onError });
+  const [editCard, setEditCard] = useState(false);
+  const updateCard = trpc.deskCard.update.useMutation({
+    onSuccess: () => {
+      setEditCard(false);
+      refresh();
+    },
+    onError,
+  });
   const setActivityStatus = trpc.activity.setStatus.useMutation({ onSuccess: refresh, onError });
   const setPaused = trpc.activity.setPaused.useMutation({ onSuccess: refresh, onError });
   // For the inline "serves" picker on each activity row.
@@ -95,11 +103,22 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
           <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Badge tone="neutral">{c.department.name}</Badge>
             <Badge tone={STATUS_TONE[c.status]}>{c.status.replace("_", " ").toLowerCase()}</Badge>
+            <Button size="sm" variant="ghost" onClick={() => setEditCard((v) => !v)}>
+              {editCard ? "Cancel" : <><Pencil /> Edit</>}
+            </Button>
           </div>
         </CardHeader>
 
         <CardContent className="flex flex-col gap-3">
-          {c.description && <p className="max-w-prose text-sm text-muted-foreground">{c.description}</p>}
+          {editCard ? (
+            <CardEditor
+              card={c}
+              pending={updateCard.isPending}
+              onSave={(changes) => updateCard.mutate({ id, ...changes })}
+            />
+          ) : (
+            c.description && <p className="max-w-prose text-sm text-muted-foreground">{c.description}</p>
+          )}
 
           <div className="flex flex-wrap items-center gap-2">
             {c.status === "DRAFT" && (
@@ -268,6 +287,110 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
       </Card>
 
       <AddActivity deskCardId={id} onDone={refresh} onError={onError} />
+    </div>
+  );
+}
+
+/**
+ * Corrects the card itself.
+ *
+ * The code is shown but not editable: audit entries, exports and anything
+ * outside workPulse refer to a card by its code, so a card created under the
+ * wrong one gets retired and replaced rather than renamed underneath them.
+ *
+ * Moving the department is the consequential field, not the cosmetic one. A
+ * task takes its department from the card rather than from its assignee, so
+ * the department decides which SLA targets match the work and whose head is
+ * escalated to on a breach - which is why the reason box appears only when the
+ * department actually changes, and why it is required then.
+ */
+function CardEditor({
+  card,
+  pending,
+  onSave,
+}: {
+  card: { code: string; name: string; description: string | null; departmentId: string };
+  pending: boolean;
+  onSave: (changes: { name: string; description: string | null; departmentId: string; reason?: string }) => void;
+}) {
+  const departments = trpc.reference.departments.useQuery();
+  const [name, setName] = useState(card.name);
+  const [description, setDescription] = useState(card.description ?? "");
+  const [departmentId, setDepartmentId] = useState(card.departmentId);
+  const [reason, setReason] = useState("");
+
+  const moving = departmentId !== card.departmentId;
+  const changed = moving || name.trim() !== card.name || description.trim() !== (card.description ?? "");
+  const ready = changed && name.trim().length >= 2 && (!moving || reason.trim().length > 0);
+
+  return (
+    <div className="flex flex-col gap-3 rounded-md border border-border bg-muted/30 p-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Code" htmlFor="dc-code" hint="Not editable — retire and replace instead">
+          <Input id="dc-code" value={card.code} disabled readOnly />
+        </Field>
+        <Field label="Name" htmlFor="dc-name" required>
+          <Input id="dc-name" value={name} onChange={(e) => setName(e.target.value)} />
+        </Field>
+        <Field
+          label="Department"
+          htmlFor="dc-dept"
+          required
+          hint="Decides which SLA targets apply and who is escalated to"
+        >
+          <Select id="dc-dept" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+            {(departments.data ?? []).map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        {moving && (
+          <Field label="Why it is moving" htmlFor="dc-reason" required>
+            <Input
+              id="dc-reason"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Created against the wrong department, reorganisation…"
+            />
+          </Field>
+        )}
+        <div className="sm:col-span-2">
+          <Field label="Description" htmlFor="dc-desc">
+            <Textarea
+              id="dc-desc"
+              rows={3}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </Field>
+        </div>
+      </div>
+
+      {moving && (
+        <p className="text-2xs text-warning">
+          Work already raised under this card keeps the department it was raised with. Only tasks
+          generated from now on will carry the new one.
+        </p>
+      )}
+
+      <div>
+        <Button
+          size="sm"
+          disabled={!ready || pending}
+          onClick={() =>
+            onSave({
+              name: name.trim(),
+              description: description.trim() || null,
+              departmentId,
+              reason: moving ? reason.trim() : undefined,
+            })
+          }
+        >
+          {pending ? "Saving…" : "Save changes"}
+        </Button>
+      </div>
     </div>
   );
 }

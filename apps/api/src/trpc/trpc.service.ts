@@ -159,6 +159,21 @@ export class TrpcService {
           )
           .mutation(({ ctx, input }) => this.deskCardService.create(ctx.user, input)),
 
+        /**
+         * Corrects the card. The code is not here on purpose - see the service.
+         */
+        update: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              id: z.string(),
+              name: z.string().min(2).max(160).optional(),
+              description: z.string().max(2000).nullish(),
+              departmentId: z.string().optional(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.deskCardService.update(ctx.user, input)),
+
         setStatus: requireRoles(...GOVERNANCE_ROLES)
           .input(
             z.object({

@@ -10,6 +10,14 @@ export interface CreateDeskCardInput {
   departmentId: string;
 }
 
+export interface UpdateDeskCardInput {
+  id: string;
+  name?: string;
+  description?: string | null;
+  departmentId?: string;
+  reason?: string;
+}
+
 export interface TransferHolderInput {
   deskCardId: string;
   toEmployeeId: string;
@@ -104,6 +112,73 @@ export class DeskCardService {
     });
 
     return card;
+  }
+
+  /**
+   * Corrects the card itself - its name, its description, or the department it
+   * belongs to.
+   *
+   * The department is not decoration. A generated task takes its department
+   * from the card, not from whoever happens to hold it, so the department
+   * decides which SLA definitions match the work and who gets escalated to
+   * when it breaches. A card sitting in the wrong department quietly sends
+   * every breach to the wrong head, which is why moving one needs a reason
+   * recorded against it.
+   *
+   * The code is deliberately not editable: it is what audit trails, exports
+   * and anything outside workPulse use to refer to this card. A card created
+   * under the wrong code is retired and replaced, not renamed underneath
+   * everything that already points at it.
+   */
+  async update(actor: AuthenticatedUser, input: UpdateDeskCardInput) {
+    this.assertCanGovern(actor, "Editing a desk card");
+
+    const before = await prisma.deskCard.findUnique({ where: { id: input.id } });
+    if (!before) throw new NotFoundException(`Desk card ${input.id} not found`);
+
+    const movingDepartment =
+      input.departmentId !== undefined && input.departmentId !== before.departmentId;
+
+    if (movingDepartment && !input.reason?.trim()) {
+      throw new BadRequestException(
+        "Moving a desk card to another department requires a reason - it changes which SLAs apply and who is escalated to",
+      );
+    }
+
+    if (movingDepartment) {
+      const department = await prisma.department.findUnique({
+        where: { id: input.departmentId },
+        select: { id: true },
+      });
+      if (!department) throw new NotFoundException("That department does not exist");
+    }
+
+    const data: Prisma.DeskCardUpdateInput = {};
+    if (input.name !== undefined) data.name = input.name.trim();
+    if (input.description !== undefined) data.description = input.description?.trim() ?? null;
+    if (movingDepartment) data.department = { connect: { id: input.departmentId } };
+
+    if (Object.keys(data).length === 0) {
+      throw new BadRequestException("Nothing to change");
+    }
+
+    const after = await prisma.deskCard.update({ where: { id: before.id }, data });
+
+    await this.audit.record({
+      entityType: "DeskCard",
+      entityId: before.id,
+      action: "updated",
+      actorId: actor.id,
+      before: {
+        name: before.name,
+        description: before.description,
+        departmentId: before.departmentId,
+      },
+      after: { name: after.name, description: after.description, departmentId: after.departmentId },
+      reason: input.reason,
+    });
+
+    return after;
   }
 
   /**
