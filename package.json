@@ -31,7 +31,8 @@
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
     "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api",
-    "docs:authority": "node docs/export-authority.js && node docs/build-authority-guide.js"
+    "docs:authority": "node docs/export-authority.js && node docs/build-authority-guide.js",
+    "docs:check": "node docs/export-authority.js && node docs/check-authority.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

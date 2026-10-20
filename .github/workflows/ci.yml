@@ -94,6 +94,12 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Catches a guide claiming a permission the code does not grant. The
+      # manager guide told managers to create desk cards for three days while
+      # the API refused them, and only a direct question found it.
+      - name: Documents agree with the permission rules
+        run: npm run docs:check
+
       - name: Unit tests (apps/api)
         run: npm run test -w apps/api
 

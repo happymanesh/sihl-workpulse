@@ -33,6 +33,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Create the card",
+    requires: ["deskCard.create"],
     who: "head",
     img: "02-new-desk-card.jpg",
     body: "Name the role, not the person. “Market Risk Analyst”, not “Priya's work”.",
@@ -47,6 +48,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "The card before it does anything",
+    requires: ["deskCard.setStatus"],
     who: "head",
     img: "03-draft-card.jpg",
     body: "A draft card with obligations on it, none of them live yet. This is the state most of the work happens in.",
@@ -61,6 +63,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Adding an obligation",
+    requires: ["activity.create"],
     who: "head",
     img: "04-add-activity.jpg",
     body: "This is the form that matters most. What you set here decides what your team is asked to do, how often, and who checks it — every month, without anybody remembering.",
@@ -77,6 +80,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "When it refuses to approve",
+    requires: ["activity.setStatus"],
     who: "head",
     img: "05-refused.jpg",
     body: "Two prerequisites catch people out. Both are deliberate, and both say so in plain words rather than failing silently.",
@@ -90,6 +94,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "If the control does not exist yet",
+    requires: ["governance.createProcess", "governance.setActivityProcess"],
     who: "head",
     img: "06-controls.jpg",
     body: "Work hangs off a named control: desk card → activity → process → policy. If the process you need is not in the list, create it under Policies & processes first.",
@@ -102,6 +107,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Approve it, and it runs",
+    requires: ["activity.setStatus"],
     who: "head",
     img: "07-approved.jpg",
     body: "Approve each activity, then the card. From here the work appears on its own, assigned to the holder, with the lead time you set.",
@@ -115,6 +121,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Changing it later",
+    requires: ["activity.amend"],
     who: "head",
     img: "08-amend.jpg",
     body: "Corrections are made in place rather than by retiring the activity and creating a new one. What a change counts as depends on what it does, not which field moved.",
@@ -129,6 +136,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Correcting the card itself",
+    requires: ["deskCard.update"],
     who: "head",
     img: "14-card-edit.png",
     body: "Edit, on the card header, changes the card rather than its activities — its name, its description, and the department it belongs to.",
@@ -142,6 +150,7 @@ const steps = [
   {
     part: "Day to day",
     title: "What you set on a single task",
+    requires: ["task.update"],
     who: "manager",
     img: "09-configured-task.jpg",
     body: "Whether the task came from a desk card or was raised directly, these are the fields that decide how it behaves.",
@@ -155,6 +164,7 @@ const steps = [
   {
     part: "Day to day",
     title: "Checking your team's work",
+    requires: ["task.transition"],
     who: "manager",
     img: "10-verify.jpg",
     body: "When work is completed it waits for the named reviewer. This is the manager's half of the loop.",
@@ -169,6 +179,7 @@ const steps = [
   {
     part: "Day to day",
     title: "Capacity, and who is carrying what",
+    requires: ["calendar.teamWorkload"],
     who: "manager",
     img: "11-capacity.jpg",
     body: "Team workload is the one screen to open each morning: open work, what is overdue, what is critical, what is blocked and on whom.",
@@ -183,6 +194,7 @@ const steps = [
   {
     part: "Day to day",
     title: "Work that is going to be late",
+    requires: ["prediction.atRisk"],
     who: "manager",
     img: "12-at-risk.jpg",
     body: "At risk assesses open work hourly and lists what is likely to breach, with the reason.",
@@ -194,6 +206,7 @@ const steps = [
   {
     part: "Day to day",
     title: "When somebody leaves or moves",
+    requires: ["handover.build"],
     who: "manager",
     img: "13-handover.jpg",
     body: "Handover builds the list from live data rather than from memory — desk cards held, open tasks, project roles, delegations.",
@@ -208,6 +221,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Writing the procedure it is asking for",
+    requires: ["workflow.createDraft", "workflow.approve"],
     who: "head",
     img: "15-procedure.png",
     body: "When approval is refused for want of a workflow, this is where you supply one. Open the activity's row on the desk card and choose Steps.",
@@ -222,6 +236,7 @@ const steps = [
   {
     part: "Day to day",
     title: "Raising, correcting and moving a task",
+    requires: ["task.reassign", "task.update"],
     who: "manager",
     img: "16-manage-task.png",
     body: "Not all work comes from a desk card. New task, on My tasks, raises a one-off — use it for work that genuinely is one-off, because anything you raise monthly belongs on a desk card instead. Everything else is here, under Manage on the task.",
@@ -235,6 +250,7 @@ const steps = [
   {
     part: "Day to day",
     title: "SLA targets",
+    requires: ["sla.createDefinition", "sla.updateDefinition"],
     who: "head",
     img: "17-sla.png",
     body: "If you are a department head you can set these yourself, under SLA targets in the sidebar.",
