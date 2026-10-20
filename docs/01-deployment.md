@@ -363,7 +363,57 @@ upgrade** — do not let it become permanent.
 
 ---
 
-## 10. Reference
+## 10. Preprod and production
+
+Deploy preprod first, work through §5 there, and only then do production. The steps are
+identical; what must not be identical is what each one points at.
+
+### Pair each workPulse with the Synapse of its own tier
+
+workPulse has no identity of its own. It reads the cookie a Synapse set, verifies it with
+that Synapse's `SESSION_SECRET`, and checks the user against that Synapse's database. So a
+workPulse belongs to exactly one Synapse, and three settings must agree with it:
+
+| Setting | Preprod | Production |
+|---|---|---|
+| Hostname it is served from | same host as **Synapse UAT** | same host as **Synapse production** |
+| `SESSION_SECRET` | Synapse UAT's | Synapse production's |
+| `SYNAPSE_DATABASE_URL` | Synapse UAT's database | Synapse production's database |
+| `DATABASE_URL` | its own preprod database | its own production database |
+
+**Never cross the tiers.** Pointing preprod workPulse at the production Synapse database
+would make preprod show real staff and real roles while writing tasks into a database
+nobody treats as real — and the day somebody tests a suspension there, they will be
+reasoning about production people.
+
+The read-only role from §3.2 is created separately on each Synapse database. Use a
+different password for each.
+
+### Two consequences of §9.1 worth saying twice
+
+The hostname rule applies **per tier**. Preprod workPulse must share a hostname with
+Synapse UAT, not with production. Each tier needs its own TLS certificate, because
+`secure: true` applies in both.
+
+### Real staff data in preprod
+
+The HR sync loads the genuine employee master — names, designations, departments, around
+560 people. In preprod that is real personal data in a lower-trust environment, with
+looser access and probably no backups.
+
+That is a decision for the Compliance Officer, not for whoever runs the deployment. Either
+confirm preprod is treated at the same standard as production, or load a reduced set.
+Do not let it happen by default simply because the sync is the easiest step to run.
+
+### What preprod is for here
+
+Prove §5 end to end — in particular step 7, signing in as a real user and reaching their
+desk card. That is the step that catches §9.1, and it cannot be proven on a developer
+machine, because localhost hides the fault.
+
+---
+
+## 11. Reference
 
 | | |
 |---|---|
