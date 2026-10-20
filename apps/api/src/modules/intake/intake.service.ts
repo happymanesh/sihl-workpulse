@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, Logger, NotFoundException } from "@nestjs/common";
-import { ActorType, Priority, TaskOrigin, TaskStatus, prisma } from "@workpulse/db";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
+import { ActorType, Priority, TaskOrigin, TaskStatus, WorkPulseRole, prisma } from "@workpulse/db";
 import { AuditService } from "../audit/audit.service";
+import type { AuthenticatedUser } from "../auth/identity.service";
 
 export interface IntakeEvent {
   sourceSystemCode: string;
@@ -186,6 +187,108 @@ export class IntakeService {
     } catch (err) {
       this.logger.warn(`Status push-back for ${task.reference} failed: ${(err as Error).message}`);
       return { delivered: false, reason: (err as Error).message };
+    }
+  }
+
+  // ---- The registry ------------------------------------------------------
+
+  /**
+   * Source systems are configuration, not data somebody types per task - and
+   * until there was a way to register one, the whole intake path was
+   * unreachable however complete the rest of it was.
+   */
+  async listSources() {
+    return prisma.sourceSystem.findMany({
+      orderBy: { code: "asc" },
+      include: { _count: { select: { tasks: true } } },
+    });
+  }
+
+  async registerSource(
+    actor: AuthenticatedUser,
+    input: {
+      code: string;
+      name: string;
+      referenceUrlTemplate?: string | null;
+      webhookUrl?: string | null;
+    },
+  ) {
+    this.assertAdmin(actor, "Registering a source system");
+
+    const code = input.code.trim().toUpperCase();
+    if (!code) throw new BadRequestException("A source system needs a code");
+
+    const clash = await prisma.sourceSystem.findUnique({ where: { code } });
+    if (clash) throw new BadRequestException(`${code} is already registered`);
+
+    const created = await prisma.sourceSystem.create({
+      data: {
+        code,
+        name: input.name.trim(),
+        referenceUrlTemplate: input.referenceUrlTemplate?.trim() || null,
+        webhookUrl: input.webhookUrl?.trim() || null,
+      },
+    });
+
+    await this.audit.record({
+      entityType: "SourceSystem",
+      entityId: created.id,
+      action: "registered",
+      actorId: actor.id,
+      after: { code: created.code, name: created.name, webhookUrl: created.webhookUrl },
+      reason: `${created.code} may now raise work`,
+    });
+
+    return created;
+  }
+
+  /**
+   * Switching a source off stops it raising new work; tasks it already raised
+   * are untouched, because they are somebody's work now regardless of where
+   * they came from.
+   */
+  async updateSource(
+    actor: AuthenticatedUser,
+    input: {
+      id: string;
+      name?: string;
+      referenceUrlTemplate?: string | null;
+      webhookUrl?: string | null;
+      isActive?: boolean;
+    },
+  ) {
+    this.assertAdmin(actor, "Changing a source system");
+
+    const before = await prisma.sourceSystem.findUnique({ where: { id: input.id } });
+    if (!before) throw new NotFoundException("Source system not found");
+
+    const after = await prisma.sourceSystem.update({
+      where: { id: input.id },
+      data: {
+        ...(input.name !== undefined ? { name: input.name.trim() } : {}),
+        ...(input.referenceUrlTemplate !== undefined
+          ? { referenceUrlTemplate: input.referenceUrlTemplate?.trim() || null }
+          : {}),
+        ...(input.webhookUrl !== undefined ? { webhookUrl: input.webhookUrl?.trim() || null } : {}),
+        ...(input.isActive !== undefined ? { isActive: input.isActive } : {}),
+      },
+    });
+
+    await this.audit.record({
+      entityType: "SourceSystem",
+      entityId: input.id,
+      action: before.isActive && after.isActive === false ? "deactivated" : "updated",
+      actorId: actor.id,
+      before: { name: before.name, webhookUrl: before.webhookUrl, isActive: before.isActive },
+      after: { name: after.name, webhookUrl: after.webhookUrl, isActive: after.isActive },
+    });
+
+    return after;
+  }
+
+  private assertAdmin(actor: AuthenticatedUser, what: string): void {
+    if (!actor.roles.includes(WorkPulseRole.SYSTEM_ADMIN)) {
+      throw new ForbiddenException(`${what} requires a system administrator`);
     }
   }
 }

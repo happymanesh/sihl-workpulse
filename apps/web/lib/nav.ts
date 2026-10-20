@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Activity, ClipboardList, IdCard, ListChecks, Layers, Columns3, CalendarDays, Users, ShieldCheck, FolderKanban, BarChart3, Gauge, Flag, Radar, TriangleAlert, FileSpreadsheet, KeyRound, UserMinus } from "lucide-react";
+import { Activity, ClipboardList, IdCard, ListChecks, Layers, Columns3, CalendarDays, Users, ShieldCheck, FolderKanban, BarChart3, Gauge, Flag, Radar, TriangleAlert, FileSpreadsheet, KeyRound, UserMinus, Timer } from "lucide-react";
 
 /**
  * Single source of truth for the sidebar. Adding a screen means adding an
@@ -62,6 +62,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { label: "MIS", href: "/mis", icon: BarChart3, roles: ["SYSTEM_ADMIN", "MANAGER", "DEPARTMENT_HEAD", "EXECUTIVE", "EXECUTIVE_RESTRICTED", "AUDIT"]  },
       { label: "Flags", href: "/flags", icon: Flag, roles: ["DEPARTMENT_HEAD", "AUDIT", "EXECUTIVE", "EXECUTIVE_RESTRICTED"]  },
       { label: "At risk", href: "/at-risk", icon: TriangleAlert, roles: ["SYSTEM_ADMIN", "MANAGER", "DEPARTMENT_HEAD", "EXECUTIVE", "EXECUTIVE_RESTRICTED"]  },
+      { label: "SLA targets", href: "/sla", icon: Timer, roles: ["SYSTEM_ADMIN", "DEPARTMENT_HEAD"]  },
       { label: "Appraisal evidence", href: "/appraisal", icon: FileSpreadsheet, roles: ["SYSTEM_ADMIN", "DEPARTMENT_HEAD", "AUDIT", "EXECUTIVE", "EXECUTIVE_RESTRICTED"]  },
       { label: "Controls", href: "/governance", icon: ShieldCheck, roles: ["SYSTEM_ADMIN", "MANAGER", "DEPARTMENT_HEAD", "AUDIT"]  },
       { label: "Policies & processes", href: "/governance/controls", icon: ShieldCheck, roles: ["SYSTEM_ADMIN", "DEPARTMENT_HEAD"]  },

@@ -15,10 +15,11 @@ import { EmployeeModule } from "../modules/employee/employee.module";
 import { ReferenceModule } from "../modules/reference/reference.module";
 import { TaskModule } from "../modules/task/task.module";
 import { AttachmentModule } from "../modules/attachment/attachment.module";
+import { IntakeModule } from "../modules/intake/intake.module";
 import { TrpcService } from "./trpc.service";
 
 @Module({
-  imports: [AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule, AttachmentModule],
+  imports: [AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule, AttachmentModule, IntakeModule],
   providers: [TrpcService],
   exports: [TrpcService],
 })

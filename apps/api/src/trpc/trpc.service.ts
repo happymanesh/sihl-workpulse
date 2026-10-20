@@ -8,6 +8,7 @@ import {
   HandoverReason,
   WorkPulseRole,
   DaciRole,
+  EscalationTarget,
   ManualScope,
   Priority,
   ProjectHealth,
@@ -45,6 +46,7 @@ import { TaskService } from "../modules/task/task.service";
 import { TaskCommentService } from "../modules/task/task-comment.service";
 import { AttachmentService } from "../modules/attachment/attachment.service";
 import { MenuService } from "../modules/auth/menu.service";
+import { IntakeService } from "../modules/intake/intake.service";
 import { protectedProcedure, publicProcedure, requireRoles, router } from "./trpc";
 
 const MANAGEMENT_ROLES = [
@@ -78,6 +80,7 @@ export class TrpcService {
     private readonly taskCommentService: TaskCommentService,
     private readonly attachmentService: AttachmentService,
     private readonly menuService: MenuService,
+    private readonly intakeService: IntakeService,
     private readonly referenceService: ReferenceService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
@@ -290,11 +293,93 @@ export class TrpcService {
           ),
       }),
 
+      /**
+       * Systems allowed to raise work. Configuration, not per-task data - and
+       * the piece whose absence made the whole intake path unreachable.
+       */
+      sourceSystem: router({
+        list: requireRoles(...MANAGEMENT_ROLES, "AUDIT").query(() => this.intakeService.listSources()),
+
+        register: requireRoles("SYSTEM_ADMIN")
+          .input(
+            z.object({
+              code: z.string().min(2).max(40),
+              name: z.string().min(2).max(200),
+              referenceUrlTemplate: z.string().max(500).nullish(),
+              webhookUrl: z.string().url().max(500).nullish(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.intakeService.registerSource(ctx.user, input)),
+
+        update: requireRoles("SYSTEM_ADMIN")
+          .input(
+            z.object({
+              id: z.string(),
+              name: z.string().min(2).max(200).optional(),
+              referenceUrlTemplate: z.string().max(500).nullish(),
+              webhookUrl: z.string().url().max(500).nullish(),
+              isActive: z.boolean().optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.intakeService.updateSource(ctx.user, input)),
+      }),
+
       sla: router({
         /** Null when no definition covers this task - not all work is tracked. */
         forTask: protectedProcedure
           .input(z.object({ taskId: z.string() }))
           .query(({ input }) => this.slaService.assess(input.taskId)),
+
+        /**
+         * Targets and their escalation chains. The engine has always worked;
+         * these are what let somebody put a row in front of it.
+         */
+        definitions: requireRoles(...MANAGEMENT_ROLES, "AUDIT").query(() =>
+          this.slaService.listDefinitions(),
+        ),
+
+        createDefinition: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              name: z.string().min(2).max(200),
+              resolutionMinutes: z.number().int().positive(),
+              responseMinutes: z.number().int().positive().nullish(),
+              taskTypeId: z.string().nullish(),
+              priority: z.nativeEnum(Priority).nullish(),
+              departmentId: z.string().nullish(),
+              sourceSystemId: z.string().nullish(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.slaService.createDefinition(ctx.user, input)),
+
+        updateDefinition: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              id: z.string(),
+              name: z.string().min(2).max(200).optional(),
+              resolutionMinutes: z.number().int().positive().optional(),
+              responseMinutes: z.number().int().positive().nullish(),
+              isActive: z.boolean().optional(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.slaService.updateDefinition(ctx.user, input)),
+
+        addEscalationRule: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              slaDefinitionId: z.string(),
+              level: z.number().int().min(1).max(10),
+              thresholdPercent: z.number().int().min(1).max(500),
+              notifyTarget: z.nativeEnum(EscalationTarget),
+              isMutable: z.boolean().default(true),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.slaService.addEscalationRule(ctx.user, input)),
+
+        removeEscalationRule: requireRoles(...GOVERNANCE_ROLES)
+          .input(z.object({ ruleId: z.string() }))
+          .mutation(({ ctx, input }) => this.slaService.removeEscalationRule(ctx.user, input.ruleId)),
       }),
 
       /**

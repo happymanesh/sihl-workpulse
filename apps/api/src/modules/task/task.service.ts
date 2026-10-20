@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from "@nestjs/common";
 import {
   ActorType,
   Complexity,
@@ -10,6 +10,7 @@ import {
   prisma,
 } from "@workpulse/db";
 import { AuditService } from "../audit/audit.service";
+import { IntakeService } from "../intake/intake.service";
 import type { AuthenticatedUser } from "../auth/identity.service";
 import { ProjectService } from "../project/project.service";
 import { canTransition, isTerminal } from "./task-lifecycle";
@@ -64,9 +65,12 @@ const COMMENT_KIND_FOR: Partial<Record<TaskStatus, TaskCommentKind>> = {
 
 @Injectable()
 export class TaskService {
+  private readonly logger = new Logger(TaskService.name);
+
   constructor(
     private readonly audit: AuditService,
     private readonly projects: ProjectService,
+    private readonly intake: IntakeService,
   ) {}
 
   /**
@@ -307,6 +311,18 @@ export class TaskService {
         actorType: ActorType.SYSTEM,
         after: { status: after.status },
       });
+    }
+
+    // Tell the originating system where its ticket got to. Deliberately not
+    // awaited into the caller's result and never allowed to throw: a tracker
+    // being down must not fail somebody's attempt to move their own task. The
+    // service logs a failed delivery, and the next transition pushes again.
+    if (after.sourceSystemId) {
+      void this.intake
+        .pushStatus(after.id)
+        .catch((err) =>
+          this.logger.warn(`Status push-back for ${after.reference} failed: ${(err as Error).message}`),
+        );
     }
 
     return { task: after, flaggedForReview: verdict.flagForReview };

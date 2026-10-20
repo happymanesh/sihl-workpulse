@@ -82,11 +82,20 @@ const CYCLE = `${RUN}-FY27H1`;
     prediction = app.get(PredictionService);
 
     const type = await prisma.taskType.findUnique({ where: { code: "OPERATIONAL" } });
-    const dept = await prisma.department.findFirst();
-    const emp = await prisma.employee.findFirst({ where: { isActive: true, departmentId: dept?.id } });
-    if (!type || !dept || !emp) throw new Error("fixtures missing");
+    // Pick the EMPLOYEE first and take their department, rather than taking an
+    // arbitrary department and hoping somebody active is in it. findFirst has
+    // no ordering, so which department comes back shifts as rows are written -
+    // and on real HR data most departments contain only leavers.
+    const emp = await prisma.employee.findFirst({
+      where: { isActive: true, departmentId: { not: null } },
+      orderBy: { name: "asc" },
+      include: { department: true },
+    });
+    if (!type || !emp?.department) {
+      throw new Error("Fixtures missing. Run `npm run db:seed` and `npm run sync:frappe-hr` first.");
+    }
     taskTypeId = type.id;
-    deptId = dept.id;
+    deptId = emp.department.id;
     empId = emp.id;
 
     const other = await prisma.employee.findFirst({ where: { isActive: true, id: { not: emp.id } } });

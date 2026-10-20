@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { MenuEditor } from "@/components/access/menu-editor";
+import { SourceSystems } from "@/components/access/source-systems";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 
@@ -338,6 +339,8 @@ export default function AccessPage() {
       </Card>
 
       <MenuEditor onError={setError} />
+
+      <SourceSystems onError={setError} />
 
       <Card>
         <CardContent className="flex gap-3 py-4">
