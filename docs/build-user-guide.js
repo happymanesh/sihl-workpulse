@@ -11,6 +11,7 @@ const PDFDocument = require("pdfkit");
 const fs = require("fs");
 
 const path = require("path");
+const { frameHeight } = require("./image-size");
 
 // Run from anywhere: everything is resolved against this file's own directory,
 // so `node docs/build-user-guide.js` rebuilds the guide from the images beside
@@ -275,6 +276,14 @@ doc.text(
 );
 
 // --------------------------------------------------------------------- steps
+doc.moveDown(1);
+doc.font("Helvetica").fontSize(8.5).fillColor(LIGHT).text(
+  "Screens here were captured on 18-19 October. The interface has moved on in one visible way since: the sidebar has gained SLA targets. Everything else in these pictures still matches the application.",
+  46,
+  doc.y,
+  { width: W, lineGap: 2 },
+);
+
 steps.forEach((s, i) => {
   doc.addPage();
 
@@ -288,7 +297,7 @@ steps.forEach((s, i) => {
   // point at - and a page that borrows an unrelated screenshot to fill the
   // space teaches the reader the wrong screen.
   const imgTop = doc.y + 12;
-  const imgH = s.img ? (W * 544) / 799 : 0;
+  const imgH = s.img ? frameHeight(SHOTS + s.img, W) : 0;
   if (s.img) {
     doc.save();
     doc.roundedRect(46, imgTop, W, imgH, 4).lineWidth(0.8).strokeColor("#d6dbe2").stroke();

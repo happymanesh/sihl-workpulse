@@ -9,6 +9,7 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const { frameHeight } = require("./image-size");
 
 const SHOTS = path.join(__dirname, "guide-images-pm") + path.sep;
 const OUT = path.join(__dirname, "workPulse-project-guide.pdf");
@@ -193,6 +194,14 @@ doc.text(
 );
 
 // --------------------------------------------------------------------- steps
+doc.moveDown(1);
+doc.font("Helvetica").fontSize(8.5).fillColor(LIGHT).text(
+  "Screens here were captured on 18-19 October. The interface has moved on in one visible way since: the sidebar has gained SLA targets. Everything else in these pictures still matches the application.",
+  46,
+  doc.y,
+  { width: W, lineGap: 2 },
+);
+
 steps.forEach((s, i) => {
   doc.addPage();
 
@@ -203,7 +212,7 @@ steps.forEach((s, i) => {
   let y = doc.y + 12;
 
   if (s.img) {
-    const imgH = (W * 544) / 799;
+    const imgH = frameHeight(SHOTS + s.img, W);
     doc.save();
     doc.roundedRect(46, y, W, imgH, 4).lineWidth(0.8).strokeColor("#d6dbe2").stroke();
     doc.image(SHOTS + s.img, 46, y, { width: W });

@@ -9,6 +9,7 @@
 const PDFDocument = require("pdfkit");
 const fs = require("fs");
 const path = require("path");
+const { frameHeight } = require("./image-size");
 
 const SHOTS = path.join(__dirname, "guide-images-mgr") + path.sep;
 const OUT = path.join(__dirname, "workPulse-manager-guide.pdf");
@@ -103,6 +104,21 @@ const steps = [
       "Add a policy. Its owner and its approver must be different people — approving your own policy is not a control.",
       "Add a process. A process can stand without a policy, but most should name the one they serve.",
     ],
+  },
+{
+    part: "Setting up recurring work",
+    title: "Writing the procedure it is asking for",
+    requires: ["workflow.createDraft", "workflow.approve"],
+    who: "head",
+    img: "15-procedure.png",
+    body: "When approval is refused for want of a workflow, this is where you supply one. Open the activity's row on the desk card and choose Steps.",
+    marks: [
+      "Write the steps in the order they are actually done, with a rough time against each. They are what the person doing the work ticks off, and what a reviewer checks against, so write them for somebody having a bad morning rather than for an auditor.",
+      "Save it as a draft. A draft changes nothing: the activity still cannot be approved while the procedure is unapproved.",
+      "Approving the procedure needs a SECOND person with governance rights. You cannot approve a workflow you wrote. That is the control working, not an obstacle to route around — if you are stuck, the answer is to ask a colleague, never to re-author it under another name.",
+      "Later changes make a new version rather than editing the live one. Approving the new version supersedes the old, and the old stays readable — so a task completed last March can still be shown against the steps that applied in March.",
+    ],
+    note: "This is why Critical activities often sit in draft for a day. It is the one place the system will not let a single person act alone, and it is deliberate.",
   },
   {
     part: "Setting up recurring work",
@@ -218,22 +234,7 @@ const steps = [
       "Build the list, then decide item by item what hands over and what stays. Both are recorded.",
     ],
   },
-  {
-    part: "Setting up recurring work",
-    title: "Writing the procedure it is asking for",
-    requires: ["workflow.createDraft", "workflow.approve"],
-    who: "head",
-    img: "15-procedure.png",
-    body: "When approval is refused for want of a workflow, this is where you supply one. Open the activity's row on the desk card and choose Steps.",
-    marks: [
-      "Write the steps in the order they are actually done, with a rough time against each. They are what the person doing the work ticks off, and what a reviewer checks against, so write them for somebody having a bad morning rather than for an auditor.",
-      "Save it as a draft. A draft changes nothing: the activity still cannot be approved while the procedure is unapproved.",
-      "Approving the procedure needs a SECOND person with governance rights. You cannot approve a workflow you wrote. That is the control working, not an obstacle to route around — if you are stuck, the answer is to ask a colleague, never to re-author it under another name.",
-      "Later changes make a new version rather than editing the live one. Approving the new version supersedes the old, and the old stays readable — so a task completed last March can still be shown against the steps that applied in March.",
-    ],
-    note: "This is why Critical activities often sit in draft for a day. It is the one place the system will not let a single person act alone, and it is deliberate.",
-  },
-  {
+    {
     part: "Day to day",
     title: "Raising, correcting and moving a task",
     requires: ["task.reassign", "task.update"],
@@ -336,6 +337,14 @@ doc.text(
 );
 
 // --------------------------------------------------------------------- steps
+doc.moveDown(1);
+doc.font("Helvetica").fontSize(8.5).fillColor(LIGHT).text(
+  "Screens here were captured on 18-19 October. The interface has moved on in one visible way since: the sidebar has gained SLA targets. Everything else in these pictures still matches the application.",
+  46,
+  doc.y,
+  { width: W, lineGap: 2 },
+);
+
 steps.forEach((s, i) => {
   doc.addPage();
 
@@ -360,7 +369,7 @@ steps.forEach((s, i) => {
   let y = doc.y + 12;
 
   if (s.img) {
-    const imgH = (W * 544) / 799;
+    const imgH = frameHeight(SHOTS + s.img, W);
     doc.save();
     doc.roundedRect(46, y, W, imgH, 4).lineWidth(0.8).strokeColor("#d6dbe2").stroke();
     doc.image(SHOTS + s.img, 46, y, { width: W });
