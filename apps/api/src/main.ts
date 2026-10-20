@@ -7,15 +7,29 @@ import { ValidationPipe, Logger } from "@nestjs/common";
 import cookieParser from "cookie-parser";
 import { AppModule } from "./app.module";
 import { mountTrpc } from "./trpc/mount";
+import { applyProxyTrust, applyRateLimits, applySecurityHeaders } from "./security";
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, {
     logger: ["error", "warn", "log", process.env.NODE_ENV === "development" ? "debug" : "log"],
   });
 
+  // Before the limiter, which keys unauthenticated callers by address.
+  applyProxyTrust(app);
+
+  // Headers first, so they are set on every response including the ones that
+  // never reach a handler - a 429 or a rejected request should be as well
+  // defended as a successful one.
+  applySecurityHeaders(app);
+
   // Identity arrives as the Synapse session cookie, so cookies must be parsed
   // before any guard or tRPC context reads them.
   app.use(cookieParser());
+
+  // After cookieParser, because callers are told apart by their session where
+  // they have one, and before the routes so the limits cover tRPC too - tRPC
+  // is raw Express middleware and Nest's guards never see it.
+  applyRateLimits(app);
 
   // Reject unknown fields / coerce types at the edge, rather than trusting
   // the frontend - important once RACI/DACI/SLA payloads get more complex.
