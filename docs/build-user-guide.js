@@ -50,6 +50,17 @@ const steps = [
   },
   {
     part: "Part 1 — Everybody",
+    title: "When the task has steps",
+    body: "Some work carries a written procedure. Where it does, the steps appear on the task and you tick them as you go.",
+    marks: [
+      "The steps are the approved procedure for this work, not a suggestion somebody typed. They were written by whoever owns the obligation and approved by a second person.",
+      "Tick them as you actually do them, rather than all at once at the end. The record is what a reviewer reads, and ticking five steps in the same second says nothing useful about how the work was done.",
+      "If a step cannot be done, say so in the remark rather than ticking it anyway. A procedure that no longer matches reality is worth reporting — it is how the procedure gets corrected.",
+    ],
+    note: "You will meet this on compliance and Critical work, which cannot go live at all until its procedure is written and approved. If a step is wrong or missing, tell whoever owns the desk card: changing it creates a new version, and the version you worked to stays readable afterwards.",
+  },
+  {
+    part: "Part 1 — Everybody",
     title: "Evidence: files and notes",
     img: "03-files-and-notes.jpg",
     body: "Work that is closed with nothing behind it gets flagged for review. Three things count as evidence, and any one of them is enough: a ticked checklist item, a file, or a note.",
@@ -273,12 +284,17 @@ steps.forEach((s, i) => {
 
   doc.font("Helvetica").fontSize(10.5).fillColor("#1b2430").text(s.body, 46, 94, { width: W, lineGap: 2.5 });
 
+  // A section may be text only. Some things worth saying have no screen to
+  // point at - and a page that borrows an unrelated screenshot to fill the
+  // space teaches the reader the wrong screen.
   const imgTop = doc.y + 12;
-  const imgH = (W * 544) / 799;
-  doc.save();
-  doc.roundedRect(46, imgTop, W, imgH, 4).lineWidth(0.8).strokeColor("#d6dbe2").stroke();
-  doc.image(SHOTS + s.img, 46, imgTop, { width: W });
-  doc.restore();
+  const imgH = s.img ? (W * 544) / 799 : 0;
+  if (s.img) {
+    doc.save();
+    doc.roundedRect(46, imgTop, W, imgH, 4).lineWidth(0.8).strokeColor("#d6dbe2").stroke();
+    doc.image(SHOTS + s.img, 46, imgTop, { width: W });
+    doc.restore();
+  }
 
   let y = imgTop + imgH + 16;
   s.marks.forEach((m, n) => {

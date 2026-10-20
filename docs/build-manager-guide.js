@@ -120,6 +120,17 @@ const steps = [
     note: "Amendments apply to work generated from now on. Tasks that already exist keep the definition they were created under — an auditor has to see the obligation that actually applied, not a later revision of it.",
   },
   {
+    part: "Setting up recurring work",
+    title: "Correcting the card itself",
+    body: "Edit, on the card header, changes the card rather than its activities — its name, its description, and the department it belongs to.",
+    marks: [
+      "The department is the consequential one. A task takes its department from the CARD, not from whoever holds it, so the department decides which SLA targets apply to the work and whose head is escalated to when it breaches. A card in the wrong department quietly sends every breach to the wrong person.",
+      "Moving a card between departments therefore asks for a reason, and records it.",
+      "The code cannot be changed. Audit entries, exports and anything outside workPulse refer to a card by its code; a card created under the wrong one is retired and replaced rather than renamed underneath everything already pointing at it.",
+    ],
+    note: "Work already raised keeps the department it was raised with. Only tasks generated after the change carry the new one — so correcting a long-standing mistake fixes the future and leaves the record of the past intact.",
+  },
+  {
     part: "Day to day",
     title: "What you set on a single task",
     img: "09-configured-task.jpg",
@@ -181,16 +192,50 @@ const steps = [
     ],
   },
   {
+    part: "Setting up recurring work",
+    title: "Writing the procedure it is asking for",
+    body: "When approval is refused for want of a workflow, this is where you supply one. Open the activity's row on the desk card and choose Steps.",
+    marks: [
+      "Write the steps in the order they are actually done, with a rough time against each. They are what the person doing the work ticks off, and what a reviewer checks against, so write them for somebody having a bad morning rather than for an auditor.",
+      "Save it as a draft. A draft changes nothing: the activity still cannot be approved while the procedure is unapproved.",
+      "Approving the procedure needs a SECOND person with governance rights. You cannot approve a workflow you wrote. That is the control working, not an obstacle to route around — if you are stuck, the answer is to ask a colleague, never to re-author it under another name.",
+      "Later changes make a new version rather than editing the live one. Approving the new version supersedes the old, and the old stays readable — so a task completed last March can still be shown against the steps that applied in March.",
+    ],
+    note: "This is why Critical activities often sit in draft for a day. It is the one place the system will not let a single person act alone, and it is deliberate.",
+  },
+  {
+    part: "Day to day",
+    title: "Raising, correcting and moving a task",
+    body: "Not all work comes from a desk card. These three are on the task itself and on the task list.",
+    marks: [
+      "Raise a one-off task for somebody: title, type, assignee, reviewer, due date, and a checklist if it helps. Use this for work that genuinely is one-off — if you find yourself raising the same thing monthly, it belongs on a desk card.",
+      "Correct a task after it is raised: due date, priority, complexity, reviewer. Moving a due date asks for a reason, and the reason is kept — a date that moves three times tells a story somebody may need to read later.",
+      "Reassign it to someone else. Both names and the reason are recorded. Work that has already been completed or sent for review cannot be moved; reopen it first, because moving it silently would undo a completion somebody signed their name to.",
+    ],
+    note: "Reassigning overdue work away from one person repeatedly is itself a pattern the system flags. That is not an accusation — it is there so that a genuine workload problem surfaces as a workload problem rather than as one person's bad numbers.",
+  },
+  {
+    part: "Day to day",
+    title: "SLA targets",
+    body: "If you are a department head you can set these yourself, under SLA targets in the sidebar.",
+    marks: [
+      "A target is matched to work from the most specific rule that fits — by task type, priority and department — so a general rule can sit underneath a narrow one without fighting it.",
+      "The clock pauses while a task is blocked or on hold, so somebody waiting on a third party is not charged for the wait.",
+      "Escalation is defined by relationship, not by name: the assignee's manager, then the department head. Nothing has to be rewritten when somebody leaves.",
+      "Extending a target that already exists asks for a reason. Quietly relaxing a target is exactly how an SLA stops meaning anything.",
+    ],
+    note: "Until targets exist, the At risk screen stays quiet — not because it is broken, but because nothing has been promised yet.",
+  },
+  {
     part: "Day to day",
     title: "What you cannot do yet",
     body: "Worth knowing before you go looking for it:",
     marks: [
-      "Raise a one-off task for somebody from a screen. The capability exists in the system and desk cards generate work automatically, but there is no “new task” form yet — so ad-hoc work currently has to come from a desk card or from an integration.",
-      "Reassign a task to a different person. Not built at all; today the route is to cancel and raise again, which loses the history.",
-      "Edit a task's due date, priority or checklist after it has been created.",
-      "Set an SLA target yourself — those are configured centrally, and until they exist the At risk screen stays empty.",
+      "Create a task directly inside a project in one step. You can raise a task and then attach it to a project, which is two actions where it should be one.",
+      "See a project as a Gantt chart or timeline. Milestones and risks are listed, not plotted.",
+      "Sprints. Deliberately out of scope — engineering keeps its board in its own tool, and workPulse holds the standing obligations an auditor would ask about rather than this fortnight's tickets.",
     ],
-    note: "The first two are the ones a manager hits in week one. They are small pieces of work rather than missing design — say the word and they can be built.",
+    note: "The four items listed here on 18 October have all since been built: raising a one-off task, reassigning one, correcting a due date or priority, and setting SLA targets yourself. They are described earlier in this guide — if you half-remember being told they were missing, that is why.",
   },
 ];
 

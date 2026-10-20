@@ -54,6 +54,17 @@ const steps = [
   },
   {
     part: "Access",
+    title: "Two things that will catch you out",
+    body: "Both of these fail silently — the person holds the role they should, and still cannot work. They are worth reading before you grant anybody anything.",
+    marks: [
+      "A role is not enough on its own: the role must also carry the WorkPulse menu entry in Synapse, AT THE USER'S OWN HIERARCHY. Synapse matches the menu grant against the hierarchy of the person, while the admin screen writes it at the hierarchy of the role. DeptHead sits at 0100 and ADMIN at 9999, so attaching the menu to either grants nothing to staff at 0200 — the row is written and never matches.",
+      "That is why every member of staff holds the EMPLOYEE role as a baseline, whatever else they hold. EMPLOYEE sits at 0200, which is where the staff are, so it is what actually makes the app reachable. workPulse takes the UNION of a person's mapped roles, so a further role only ever adds — a department head holds EMPLOYEE and DeptHead, and loses nothing by it.",
+      "A mapping you add on this screen is NOT permanent. The deployment seed treats its own list as authoritative and deactivates every mapping not on it. Add the mapping here to make it work today, and add it to ROLE_MAP in the seed to make it survive the next deployment.",
+    ],
+    note: "The symptom of the first is a signed-in user being told to sign in; of the third, people who worked yesterday being refused today with nothing in the release notes. Neither reports itself, so both are listed here rather than left to be discovered.",
+  },
+  {
+    part: "Access",
     title: "Giving somebody a shorter menu",
     img: "04-menus.jpg",
     body: "If a team should open workPulse and see four entries rather than fourteen, untick the rest. The list offered is exactly what that person's roles already grant.",
@@ -160,13 +171,14 @@ const steps = [
     title: "Known gaps",
     body: "Things an administrator will find before anybody reports them:",
     marks: [
-      "“Employees” in the sidebar leads to a page that does not exist — the route was never built, so the link 404s. The employee data itself is intact and read through other screens.",
       "The shadow-quarter screen is reachable only by typing the URL; it is not in the menu for anybody.",
-      "No screen raises a one-off task, and tasks cannot be reassigned — both matter mostly to managers, but you will field the question.",
-      "SLA definitions have no admin screen, so the At risk view stays empty until they are configured directly.",
-      "Source-system intake is built but has no endpoint, so nothing can yet post tickets in from an issue tracker.",
+      "A user whose Synapse role maps to nothing is told “Sign in to continue”, which is misleading — they are signed in, they have no role. Until the wording is fixed, read that message as “this person needs a mapping”.",
+      "SLA targets have a screen, but almost nothing is configured in it yet. The At risk view stays quiet until somebody sets real targets — that is now a filling-in job rather than a missing feature.",
+      "Attachments are written to local disk rather than object storage, so exactly one API instance may run. Two would each see only the files they wrote, and half of every evidence trail would look missing.",
+      "A task can be added to a project, but not created from inside one in a single step; and there is no Gantt or timeline view.",
+      "Three dependency vulnerabilities (multer, platform-express, lodash) need a NestJS major upgrade and are deliberately outstanding. Schedule it rather than letting it settle.",
     ],
-    note: "None of these is a design problem; they are unbuilt pieces. Listed here so the first person to hit one knows it is known rather than broken.",
+    note: "Four items that stood here on 18 October have since been built — the Employees page, raising and reassigning tasks, the SLA screen and the intake endpoint — and have been removed rather than left to mislead. None of what remains is a design problem.",
   },
 ];
 
