@@ -30,7 +30,8 @@
     "docs:lifecycle-map": "node -e \"const {transitionMap}=require('./apps/api/dist/src/modules/task/task-lifecycle.js');require('fs').writeFileSync('docs/task-lifecycle.json',JSON.stringify(transitionMap(),null,2))\"",
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",
-    "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api"
+    "sync:frappe-hr": "npm run sync:frappe-hr -w apps/api",
+    "docs:authority": "node docs/export-authority.js && node docs/build-authority-guide.js"
   },
   "devDependencies": {
     "concurrently": "^8.2.2",

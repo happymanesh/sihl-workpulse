@@ -1,0 +1,1033 @@
+{
+  "roleConstants": {
+    "MANAGEMENT_ROLES": [
+      "SYSTEM_ADMIN",
+      "MANAGER",
+      "DEPARTMENT_HEAD",
+      "EXECUTIVE",
+      "EXECUTIVE_RESTRICTED"
+    ],
+    "GOVERNANCE_ROLES": [
+      "SYSTEM_ADMIN",
+      "DEPARTMENT_HEAD"
+    ]
+  },
+  "routers": {
+    "meta": {
+      "ping": {
+        "roles": [
+          "PUBLIC"
+        ],
+        "kind": "view"
+      },
+      "me": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      }
+    },
+    "reference": {
+      "taskTypes": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "departments": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "taskTransitions": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      }
+    },
+    "employee": {
+      "list": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED"
+        ],
+        "kind": "view"
+      },
+      "byId": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED"
+        ],
+        "kind": "view"
+      }
+    },
+    "deskCard": {
+      "list": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED"
+        ],
+        "kind": "view"
+      },
+      "byId": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "mine": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "create": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "update": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setStatus": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "transferHolder": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "acknowledge": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      }
+    },
+    "activity": {
+      "create": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "amend": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "amendEstimatedMinutes": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setStatus": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setPaused": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setActive": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "sourceSystem": {
+      "list": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "register": {
+        "roles": [
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "change"
+      },
+      "update": {
+        "roles": [
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "change"
+      }
+    },
+    "sla": {
+      "forTask": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "definitions": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "createDefinition": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "updateDefinition": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "addEscalationRule": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "removeEscalationRule": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "handover": {
+      "get": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "view"
+      },
+      "history": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "view"
+      },
+      "build": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "setDisposition": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "transferItem": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "approve": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "complete": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "MANAGER"
+        ],
+        "kind": "change"
+      }
+    },
+    "project": {
+      "list": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "byId": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "create": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "setStatus": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "recalculateHealth": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "overrideHealth": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "addMilestone": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "setMilestoneComplete": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "removeMilestone": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "raiseRisk": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "setRiskBlocking": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "resolveRisk": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "attachTask": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "detachTask": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "unassignedTasks": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "assignRaci": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "removeRaci": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "createDecision": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD",
+          "PROJECT_MANAGER",
+          "MANAGER"
+        ],
+        "kind": "change"
+      },
+      "decide": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "addDependency": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "removeDependency": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      }
+    },
+    "workflow": {
+      "forActivity": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "current": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "createDraft": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "editDraft": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "approve": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "governance": {
+      "policies": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "createPolicy": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setPolicyStatus": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "processes": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "createProcess": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setProcessStatus": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setProcessPolicy": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setActivityProcess": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "coverage": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "processCoverage": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "orphans": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "manuals": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "manual": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "generateManual": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "calendar": {
+      "blocks": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "createBlock": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "deleteBlock": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "myUtilisation": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "teamWorkload": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "view"
+      },
+      "setBudget": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "task": {
+      "mine": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "byId": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "create": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "transition": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "reassign": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED"
+        ],
+        "kind": "change"
+      },
+      "update": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED"
+        ],
+        "kind": "change"
+      },
+      "comments": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "addComment": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "attachments": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "removeAttachment": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "setChecklistItem": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      }
+    },
+    "mis": {
+      "enterprise": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "byDepartment": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "byEmployee": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "tasks": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      }
+    },
+    "analytics": {
+      "myReportCard": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "reportCard": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "teamPeriods": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "recompute": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "flag": {
+      "mine": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "list": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "review": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      }
+    },
+    "commandCentre": {
+      "pulse": {
+        "roles": [
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT",
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "view"
+      },
+      "events": {
+        "roles": [
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT",
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "view"
+      },
+      "refresh": {
+        "roles": [
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "change"
+      }
+    },
+    "prediction": {
+      "atRisk": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "forTask": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "accuracy": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "MANAGER",
+          "DEPARTMENT_HEAD",
+          "EXECUTIVE",
+          "EXECUTIVE_RESTRICTED",
+          "AUDIT"
+        ],
+        "kind": "view"
+      }
+    },
+    "appraisal": {
+      "generate": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "generateForDepartment": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "find": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "mine": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "listCycle": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      }
+    },
+    "shadowScore": {
+      "report": {
+        "roles": [
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "anonymised": {
+        "roles": [
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "compute": {
+        "roles": [
+          "AUDIT"
+        ],
+        "kind": "change"
+      }
+    },
+    "access": {
+      "coverage": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "AUDIT"
+        ],
+        "kind": "view"
+      },
+      "mappings": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "upsertMapping": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "deactivateMapping": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "users": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "holders": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "grant": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "revoke": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      },
+      "menu": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "adjustedMenus": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "view"
+      },
+      "setMenu": {
+        "roles": [
+          "ANY_SIGNED_IN"
+        ],
+        "kind": "change"
+      }
+    }
+  }
+}
