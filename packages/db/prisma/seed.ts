@@ -14,6 +14,12 @@
  * What it does seed is the Synapse-role -> workPulse-role mapping, which is
  * workPulse's own configuration and has to exist before the first sign-in can
  * resolve to anything above EMPLOYEE.
+ *
+ * IMPORTANT: ROLE_MAP below is authoritative, not additive. Any mapping NOT
+ * listed here is deactivated when this runs - including one an administrator
+ * added through the Access screen. So a mapping that should survive a
+ * redeployment has to be added to this list as well, or the next seed quietly
+ * revokes it and the people who depended on it lose access at the next sign-in.
  */
 import { PrismaClient, WorkPulseRole } from "@prisma/client";
 
@@ -102,6 +108,20 @@ const TASK_TYPES = [
 const ROLE_MAP: { synapseRoleCode: string; workPulseRole: WorkPulseRole }[] = [
   // Super Admin
   { synapseRoleCode: "ADMIN", workPulseRole: WorkPulseRole.SYSTEM_ADMIN },
+  // The baseline every member of staff holds. It is also what makes workPulse
+  // reachable from the Synapse launcher at hierarchy 0200, so a deployment
+  // without it leaves people holding a role and no way to open the app.
+  { synapseRoleCode: "EMPLOYEE", workPulseRole: WorkPulseRole.EMPLOYEE },
+  // Department Head. Note the casing: Synapse's role is `DeptHead`, and the
+  // older all-caps `DEPT_HEAD` row is deliberately left deactivated.
+  { synapseRoleCode: "DeptHead", workPulseRole: WorkPulseRole.DEPARTMENT_HEAD },
+  { synapseRoleCode: "Project_Manager", workPulseRole: WorkPulseRole.PROJECT_MANAGER },
+  { synapseRoleCode: "Executive", workPulseRole: WorkPulseRole.EXECUTIVE },
+  { synapseRoleCode: "Executive_Restricted", workPulseRole: WorkPulseRole.EXECUTIVE_RESTRICTED },
+  // Service accounts for systems that raise work through /intake.
+  { synapseRoleCode: "Integrated_Service", workPulseRole: WorkPulseRole.INTEGRATION_SERVICE },
+  // Asst Product Manager
+  { synapseRoleCode: "APM_001", workPulseRole: WorkPulseRole.EMPLOYEE },
   // Product / Ops
   { synapseRoleCode: "PRODUCT_OPS", workPulseRole: WorkPulseRole.EMPLOYEE },
   // Support Desk
