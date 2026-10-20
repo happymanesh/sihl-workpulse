@@ -122,6 +122,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Correcting the card itself",
+    img: "14-card-edit.png",
     body: "Edit, on the card header, changes the card rather than its activities — its name, its description, and the department it belongs to.",
     marks: [
       "The department is the consequential one. A task takes its department from the CARD, not from whoever holds it, so the department decides which SLA targets apply to the work and whose head is escalated to when it breaches. A card in the wrong department quietly sends every breach to the wrong person.",
@@ -194,6 +195,7 @@ const steps = [
   {
     part: "Setting up recurring work",
     title: "Writing the procedure it is asking for",
+    img: "15-procedure.png",
     body: "When approval is refused for want of a workflow, this is where you supply one. Open the activity's row on the desk card and choose Steps.",
     marks: [
       "Write the steps in the order they are actually done, with a rough time against each. They are what the person doing the work ticks off, and what a reviewer checks against, so write them for somebody having a bad morning rather than for an auditor.",
@@ -206,17 +208,19 @@ const steps = [
   {
     part: "Day to day",
     title: "Raising, correcting and moving a task",
-    body: "Not all work comes from a desk card. These three are on the task itself and on the task list.",
+    img: "16-manage-task.png",
+    body: "Not all work comes from a desk card. New task, on My tasks, raises a one-off — use it for work that genuinely is one-off, because anything you raise monthly belongs on a desk card instead. Everything else is here, under Manage on the task.",
     marks: [
-      "Raise a one-off task for somebody: title, type, assignee, reviewer, due date, and a checklist if it helps. Use this for work that genuinely is one-off — if you find yourself raising the same thing monthly, it belongs on a desk card.",
-      "Correct a task after it is raised: due date, priority, complexity, reviewer. Moving a due date asks for a reason, and the reason is kept — a date that moves three times tells a story somebody may need to read later.",
-      "Reassign it to someone else. Both names and the reason are recorded. Work that has already been completed or sent for review cannot be moved; reopen it first, because moving it silently would undo a completion somebody signed their name to.",
+      "Move it to somebody else. The task goes back to Assigned so the new holder accepts it themselves — carrying the last person's acceptance across would put their name against a commitment they never made.",
+      "The reason, required, and recorded against both names. Repeatedly moving overdue work away from one person is itself flagged — not as an accusation, but so a workload problem surfaces as a workload problem.",
+      "Correct it: reviewer, priority, due date. Moving a due date asks for a reason and keeps it — a date that moves three times tells a story somebody may need to read later.",
     ],
     note: "Reassigning overdue work away from one person repeatedly is itself a pattern the system flags. That is not an accusation — it is there so that a genuine workload problem surfaces as a workload problem rather than as one person's bad numbers.",
   },
   {
     part: "Day to day",
     title: "SLA targets",
+    img: "17-sla.png",
     body: "If you are a department head you can set these yourself, under SLA targets in the sidebar.",
     marks: [
       "A target is matched to work from the most specific rule that fits — by task type, priority and department — so a general rule can sit underneath a narrow one without fighting it.",

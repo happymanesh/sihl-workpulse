@@ -55,13 +55,14 @@ const steps = [
   {
     part: "Access",
     title: "Two things that will catch you out",
-    body: "Both of these fail silently — the person holds the role they should, and still cannot work. They are worth reading before you grant anybody anything.",
+    img: "12-access-traps.png",
+    body: "Role coverage answers the question you will actually be asked, which is never “what does this role mean” but “why can this person not get in”.",
     marks: [
-      "A role is not enough on its own: the role must also carry the WorkPulse menu entry in Synapse, AT THE USER'S OWN HIERARCHY. Synapse matches the menu grant against the hierarchy of the person, while the admin screen writes it at the hierarchy of the role. DeptHead sits at 0100 and ADMIN at 9999, so attaching the menu to either grants nothing to staff at 0200 — the row is written and never matches.",
-      "That is why every member of staff holds the EMPLOYEE role as a baseline, whatever else they hold. EMPLOYEE sits at 0200, which is where the staff are, so it is what actually makes the app reachable. workPulse takes the UNION of a person's mapped roles, so a further role only ever adds — a department head holds EMPLOYEE and DeptHead, and loses nothing by it.",
-      "A mapping you add on this screen is NOT permanent. The deployment seed treats its own list as authoritative and deactivates every mapping not on it. Add the mapping here to make it work today, and add it to ROLE_MAP in the seed to make it survive the next deployment.",
+      "A role nobody can reach. Nothing maps to it and nobody holds it directly, so the controls behind it cannot be exercised by anyone. Identity is deny-by-default with no fallback, so this fails closed rather than over-granting — but it has to be fixed before go-live rather than discovered during it.",
+      "EMPLOYEE is reached by more Synapse roles than any other, because every member of staff holds it as a baseline whatever else they hold. workPulse takes the UNION of a person's mapped roles, so a further role only ever adds — a department head holds EMPLOYEE and DeptHead and loses nothing by it.",
+      "What a role is reached via. These mappings are the grant. Add one here to make it work today — and add it to ROLE_MAP in the deployment seed to make it survive, because the seed treats its own list as authoritative and deactivates every mapping not on it. The symptom otherwise is people who worked yesterday being refused today, with nothing in the release notes to explain it.",
     ],
-    note: "The symptom of the first is a signed-in user being told to sign in; of the third, people who worked yesterday being refused today with nothing in the release notes. Neither reports itself, so both are listed here rather than left to be discovered.",
+    note: "The trap this screen cannot show you: a mapped role still grants nothing unless it also carries the WorkPulse menu entry in Synapse AT THE USER'S OWN HIERARCHY. Synapse matches the menu against the hierarchy of the person, while its admin screen writes it at the hierarchy of the role — DeptHead sits at 0100 and ADMIN at 9999, so attaching the menu to either grants nothing to staff at 0200. That is the other reason everybody holds EMPLOYEE, which sits where the staff do.",
   },
   {
     part: "Access",
