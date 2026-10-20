@@ -25,6 +25,8 @@
     "docs:manager-guide": "node docs/build-manager-guide.js",
     "docs:admin-guide": "node docs/build-admin-guide.js",
     "docs:lifecycle-guide": "node docs/build-lifecycle-guide.js",
+    "docs:project-guide": "node docs/build-project-workflow-guide.js",
+    "docs:project-roles": "node docs/export-project-roles.js",
     "docs:lifecycle-map": "node -e \"const {transitionMap}=require('./apps/api/dist/src/modules/task/task-lifecycle.js');require('fs').writeFileSync('docs/task-lifecycle.json',JSON.stringify(transitionMap(),null,2))\"",
     "db:studio": "prisma studio --schema packages/db/prisma/schema.prisma",
     "db:seed": "npm run assert-target && tsx packages/db/prisma/seed.ts",

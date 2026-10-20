@@ -1,0 +1,107 @@
+{
+  "list": [
+    "ANY"
+  ],
+  "byId": [
+    "ANY"
+  ],
+  "create": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "setStatus": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "recalculateHealth": [
+    "ANY"
+  ],
+  "overrideHealth": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "addMilestone": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "setMilestoneComplete": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "removeMilestone": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "raiseRisk": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "setRiskBlocking": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "resolveRisk": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "attachTask": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "detachTask": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "unassignedTasks": [
+    "ANY"
+  ],
+  "assignRaci": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "removeRaci": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "createDecision": [
+    "SYSTEM_ADMIN",
+    "DEPARTMENT_HEAD",
+    "PROJECT_MANAGER",
+    "MANAGER"
+  ],
+  "decide": [
+    "ANY"
+  ],
+  "addDependency": [
+    "ANY"
+  ],
+  "removeDependency": [
+    "ANY"
+  ]
+}
