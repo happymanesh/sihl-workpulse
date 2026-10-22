@@ -67,6 +67,79 @@
           "EXECUTIVE_RESTRICTED"
         ],
         "kind": "view"
+      },
+      "syncFromSynapse": {
+        "roles": [
+          "SYSTEM_ADMIN"
+        ],
+        "kind": "change"
+      }
+    },
+    "orgMaster": {
+      "list": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "view"
+      },
+      "rename": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "markReviewed": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "merge": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setActive": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      }
+    },
+    "taskType": {
+      "list": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "view"
+      },
+      "create": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "update": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
+      },
+      "setActive": {
+        "roles": [
+          "SYSTEM_ADMIN",
+          "DEPARTMENT_HEAD"
+        ],
+        "kind": "change"
       }
     },
     "deskCard": {

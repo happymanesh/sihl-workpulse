@@ -50,6 +50,8 @@ const AREAS = [
   { key: "handover", title: "Handover", where: "Handover" },
   { key: "project", title: "Projects", where: "Projects" },
   { key: "sla", title: "SLA targets", where: "SLA targets" },
+  { key: "taskType", title: "Task types", where: "Task types" },
+  { key: "orgMaster", title: "Designations and branches", where: "Designations & branches" },
   { key: "governance", title: "Policies and processes", where: "Policies & processes" },
   { key: "access", title: "Access and roles", where: "Access" },
   { key: "sourceSystem", title: "Source systems", where: "Access" },
@@ -103,6 +105,17 @@ const LABELS = {
   "task.attachments": ["See the evidence on a task", "The task"],
   "task.removeAttachment": ["Withdraw an attachment", "The task"],
   "task.mine": ["See your own work", "My tasks"],
+
+  "taskType.create": ["Add a task type", "Task types → New type"],
+  "taskType.update": ["Change what a task type requires (removing a control asks why)", "Task types"],
+  "taskType.setActive": ["Retire a task type, or bring one back", "Task types"],
+
+  "orgMaster.rename": ["Rename a designation or branch everywhere at once", "Designations & branches"],
+  "orgMaster.merge": ["Merge two into one, moving the people", "Designations & branches"],
+  "orgMaster.markReviewed": ["Accept a designation or branch as it stands", "Designations & branches"],
+  "orgMaster.setActive": ["Retire a designation or branch", "Designations & branches"],
+
+  "employee.syncFromSynapse": ["Pull staff and departments from Synapse now", "Employees"],
 
   "sla.createDefinition": ["Set an SLA target", "SLA targets"],
   "sla.updateDefinition": ["Change a target (extending asks why)", "SLA targets"],
