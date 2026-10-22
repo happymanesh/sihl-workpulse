@@ -41,6 +41,8 @@ import { DeskCardActivityService } from "../modules/desk-card/desk-card-activity
 import { DeskCardService } from "../modules/desk-card/desk-card.service";
 import { EmployeeService } from "../modules/employee/employee.service";
 import { ReferenceService } from "../modules/reference/reference.service";
+import { TaskTypeService } from "../modules/reference/task-type.service";
+import { runFrappeHrSync } from "../jobs/frappe-hr-sync";
 import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
 import { TaskCommentService } from "../modules/task/task-comment.service";
@@ -82,6 +84,7 @@ export class TrpcService {
     private readonly menuService: MenuService,
     private readonly intakeService: IntakeService,
     private readonly referenceService: ReferenceService,
+    private readonly taskTypeService: TaskTypeService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
     private readonly coverageService: CoverageService,
@@ -130,6 +133,58 @@ export class TrpcService {
         byId: requireRoles(...MANAGEMENT_ROLES)
           .input(z.object({ id: z.string() }))
           .query(({ input }) => this.employeeService.findById(input.id)),
+
+        /**
+         * Pull the staff master from Synapse now, rather than waiting for the
+         * two-hourly job. The same pass the schedule runs - departments first,
+         * then employees - so this adds no second code path to keep in step.
+         */
+        syncFromSynapse: requireRoles("SYSTEM_ADMIN").mutation(() => runFrappeHrSync()),
+      }),
+
+      taskType: router({
+        list: requireRoles(...GOVERNANCE_ROLES).query(({ ctx }) =>
+          this.taskTypeService.list(ctx.user),
+        ),
+
+        create: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              code: z.string().min(2).max(40),
+              name: z.string().min(2).max(120),
+              requiresVerification: z.boolean(),
+              requiresEvidence: z.boolean(),
+              requiresMakerChecker: z.boolean(),
+              autoCloseAfterHours: z.number().int().min(1).max(8760).nullish(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.taskTypeService.create(ctx.user, input)),
+
+        update: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              id: z.string(),
+              name: z.string().min(2).max(120).optional(),
+              requiresVerification: z.boolean().optional(),
+              requiresEvidence: z.boolean().optional(),
+              requiresMakerChecker: z.boolean().optional(),
+              autoCloseAfterHours: z.number().int().min(1).max(8760).nullish(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) => this.taskTypeService.update(ctx.user, input)),
+
+        setActive: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              id: z.string(),
+              isActive: z.boolean(),
+              reason: z.string().max(1000).optional(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.taskTypeService.setActive(ctx.user, input.id, input.isActive, input.reason),
+          ),
       }),
 
       deskCard: router({

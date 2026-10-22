@@ -78,6 +78,7 @@ export const NAV_SECTIONS: NavSection[] = [
     items: [
       { label: "Overview", href: "/", icon: Activity, roles: ["SYSTEM_ADMIN"]  },
       { label: "Employees", href: "/employees", icon: ClipboardList, roles: ["SYSTEM_ADMIN", "MANAGER", "DEPARTMENT_HEAD"]  },
+      { label: "Task types", href: "/task-types", icon: ListChecks, roles: ["SYSTEM_ADMIN", "DEPARTMENT_HEAD"]  },
       { label: "Access", href: "/access", icon: KeyRound, roles: ["SYSTEM_ADMIN", "AUDIT"]  },
     ],
   },

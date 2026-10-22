@@ -1,8 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Info } from "lucide-react";
+import { Info, RefreshCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input, Select } from "@/components/ui/field";
 import { trpc } from "@/lib/trpc/client";
@@ -19,7 +20,28 @@ import { trpc } from "@/lib/trpc/client";
  * existed, so this was a 404 in the sidebar.
  */
 export default function EmployeesPage() {
+  const utils = trpc.useUtils();
+  const me = trpc.meta.me.useQuery();
   const employees = trpc.employee.list.useQuery({ activeOnly: false });
+  const [syncNote, setSyncNote] = useState<string | null>(null);
+
+  /**
+   * The same pass the two-hourly job runs, on demand. Without it a joiner or a
+   * department change is invisible here for up to two hours, and the only way
+   * to hurry it along was a command on the server.
+   */
+  const sync = trpc.employee.syncFromSynapse.useMutation({
+    onSuccess: (r) => {
+      setSyncNote(
+        r.errors.length > 0
+          ? `Finished with problems: ${r.errors.join("; ")}`
+          : `Updated ${r.departmentsSynced} department${r.departmentsSynced === 1 ? "" : "s"} and ${r.employeesSynced} employee${r.employeesSynced === 1 ? "" : "s"} from Synapse.`,
+      );
+      utils.employee.list.invalidate();
+    },
+    onError: (e) => setSyncNote(`Could not update: ${e.message}`),
+  });
+
   const [q, setQ] = useState("");
   const [department, setDepartment] = useState("");
   const [active, setActive] = useState("active");
@@ -62,8 +84,40 @@ export default function EmployeesPage() {
     );
   }
 
+  const isAdmin = me.data?.roles.includes("SYSTEM_ADMIN") ?? false;
+
   return (
     <div className="flex flex-col gap-4">
+      {isAdmin && (
+        <Card>
+          <CardContent className="flex flex-wrap items-center gap-3 py-3">
+            <div className="flex min-w-64 flex-1 flex-col gap-0.5">
+              <span className="label-caps">Master data</span>
+              <p className="text-2xs text-muted-foreground">
+                Staff and departments come from Synapse on a two-hourly schedule. Update now if
+                somebody has just joined, moved or left and you need them here immediately.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={sync.isPending}
+              onClick={() => {
+                setSyncNote(null);
+                sync.mutate();
+              }}
+            >
+              <RefreshCw /> {sync.isPending ? "Updating…" : "Update from Synapse"}
+            </Button>
+          </CardContent>
+          {syncNote && (
+            <CardContent className="border-t border-border py-2">
+              <p className="text-2xs text-muted-foreground">{syncNote}</p>
+            </CardContent>
+          )}
+        </Card>
+      )}
+
       <div className="flex flex-wrap items-end gap-2">
         <Input
           value={q}
