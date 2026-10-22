@@ -8,6 +8,15 @@ export interface HealthStatus {
   status: "ok" | "degraded" | "down";
   service: string;
   version: string;
+  /**
+   * The git commit this process was built from, short form - or "unknown"
+   * where it could not be determined.
+   *
+   * Exists because "which build is on UAT?" had no answer from outside the
+   * machine: version is the package version, identical in every build ever
+   * made, so it identified nothing.
+   */
+  revision: string;
   timestamp: string;
   checks: {
     database: "ok" | "error";

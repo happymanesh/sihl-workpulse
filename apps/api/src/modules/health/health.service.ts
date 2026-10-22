@@ -1,8 +1,38 @@
+import { execFileSync } from "node:child_process";
 import { Injectable, Logger } from "@nestjs/common";
 import { Redis } from "ioredis";
 import { prisma } from "@workpulse/db";
 import type { HealthStatus } from "@workpulse/shared-types";
 import { SynapseDirectoryService } from "../auth/synapse-directory.service";
+
+/**
+ * Which commit this process is running, worked out once at startup.
+ *
+ * GIT_SHA first, for builds where the source is not present at runtime — a
+ * container, or a tarball copied onto a host. Otherwise ask git, which works
+ * because deployment here is a pull on the box, so the repository is sitting
+ * right there.
+ *
+ * Never throws and never blocks a health check: a service that will not report
+ * its own health because it could not name its commit is worse than one that
+ * says "unknown".
+ */
+const REVISION: string = (() => {
+  const fromEnv = process.env.GIT_SHA?.trim();
+  if (fromEnv) return fromEnv.slice(0, 12);
+
+  try {
+    // execFileSync, not exec: no shell, so nothing here can be interpreted.
+    return execFileSync("git", ["rev-parse", "--short=12", "HEAD"], {
+      cwd: __dirname,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 2000,
+    }).trim();
+  } catch {
+    return "unknown";
+  }
+})();
 
 @Injectable()
 export class HealthService {
@@ -41,6 +71,7 @@ export class HealthService {
       status,
       service: "workpulse-api",
       version: process.env.npm_package_version ?? "0.0.1",
+      revision: REVISION,
       timestamp: new Date().toISOString(),
       checks,
     };
