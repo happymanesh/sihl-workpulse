@@ -26,6 +26,20 @@ export default function DeskCardsAdminPage() {
   const [form, setForm] = useState({ code: "", name: "", description: "", departmentId: "" });
   const [error, setError] = useState<string | null>(null);
 
+  const departmentsReady = (departments.data?.length ?? 0) > 0;
+
+  /**
+   * Why the department list is unusable, when it is. Departments are not seeded
+   * - they arrive with the HR sync - so an empty list on a freshly deployed
+   * environment means that step has not been run, and saying so here saves
+   * somebody hunting through an application that is otherwise working.
+   */
+  const departmentHint = departments.isError
+    ? `Could not load departments: ${departments.error.message}`
+    : !departments.isPending && !departmentsReady
+      ? "No departments exist yet. They come from the HR sync, not from this screen — run it, then reopen this form."
+      : null;
+
   const create = trpc.deskCard.create.useMutation({
     onSuccess: () => {
       setCreating(false);
@@ -90,14 +104,32 @@ export default function DeskCardsAdminPage() {
                   placeholder="Compliance Officer"
                 />
               </Field>
-              <Field label="Department" htmlFor="dept" required className="sm:col-span-2">
+              <Field
+                label="Department"
+                htmlFor="dept"
+                required
+                className="sm:col-span-2"
+                hint={departmentHint ?? undefined}
+              >
                 <Select
                   id="dept"
                   value={form.departmentId}
+                  disabled={!departmentsReady}
                   onChange={(e) => setForm({ ...form, departmentId: e.target.value })}
                 >
-                  <option value="">Select a department…</option>
-                  {departments.data?.map((d) => (
+                  {/* Three very different situations used to look identical here:
+                      still loading, the query failed, and no departments exist at
+                      all. An empty dropdown told you none of them. */}
+                  <option value="">
+                    {departments.isPending
+                      ? "Loading departments…"
+                      : departments.isError
+                        ? "Could not load departments"
+                        : departmentsReady
+                          ? "Select a department…"
+                          : "No departments to choose from"}
+                  </option>
+                  {(departments.data ?? []).map((d) => (
                     <option key={d.id} value={d.id}>
                       {d.name}
                     </option>
