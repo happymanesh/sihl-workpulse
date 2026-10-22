@@ -42,6 +42,7 @@ import { DeskCardService } from "../modules/desk-card/desk-card.service";
 import { EmployeeService } from "../modules/employee/employee.service";
 import { ReferenceService } from "../modules/reference/reference.service";
 import { TaskTypeService } from "../modules/reference/task-type.service";
+import { OrgMasterService } from "../modules/reference/org-master.service";
 import { runFrappeHrSync } from "../jobs/frappe-hr-sync";
 import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
@@ -85,6 +86,7 @@ export class TrpcService {
     private readonly intakeService: IntakeService,
     private readonly referenceService: ReferenceService,
     private readonly taskTypeService: TaskTypeService,
+    private readonly orgMasterService: OrgMasterService,
     private readonly calendarService: CalendarService,
     private readonly workflowService: WorkflowService,
     private readonly coverageService: CoverageService,
@@ -140,6 +142,54 @@ export class TrpcService {
          * then employees - so this adds no second code path to keep in step.
          */
         syncFromSynapse: requireRoles("SYSTEM_ADMIN").mutation(() => runFrappeHrSync()),
+      }),
+
+      orgMaster: router({
+        list: requireRoles(...GOVERNANCE_ROLES)
+          .input(z.object({ kind: z.enum(["designation", "branch"]) }))
+          .query(({ ctx, input }) => this.orgMasterService.list(ctx.user, input.kind)),
+
+        rename: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              kind: z.enum(["designation", "branch"]),
+              id: z.string(),
+              name: z.string().min(2).max(120),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.orgMasterService.rename(ctx.user, input.kind, input.id, input.name),
+          ),
+
+        markReviewed: requireRoles(...GOVERNANCE_ROLES)
+          .input(z.object({ kind: z.enum(["designation", "branch"]), id: z.string() }))
+          .mutation(({ ctx, input }) =>
+            this.orgMasterService.markReviewed(ctx.user, input.kind, input.id),
+          ),
+
+        merge: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              kind: z.enum(["designation", "branch"]),
+              fromId: z.string(),
+              intoId: z.string(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.orgMasterService.merge(ctx.user, input.kind, input.fromId, input.intoId),
+          ),
+
+        setActive: requireRoles(...GOVERNANCE_ROLES)
+          .input(
+            z.object({
+              kind: z.enum(["designation", "branch"]),
+              id: z.string(),
+              isActive: z.boolean(),
+            }),
+          )
+          .mutation(({ ctx, input }) =>
+            this.orgMasterService.setActive(ctx.user, input.kind, input.id, input.isActive),
+          ),
       }),
 
       taskType: router({

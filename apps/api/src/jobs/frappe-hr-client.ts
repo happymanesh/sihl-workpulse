@@ -26,6 +26,8 @@ export interface RawFrappeEmployee {
   /** Not an identifier: team-shared mailboxes exist, and some staff have none. */
   email: string | null;
   designation: string | null;
+  /** The office, as HR spells it. Governed into the Branch master on sync. */
+  branch?: string | null;
   departmentId: string | null;
   managerEmployeeId: string | null;
   isActive: boolean;

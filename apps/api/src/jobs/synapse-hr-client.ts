@@ -41,6 +41,7 @@ export class SynapseHrClient implements FrappeHrClient {
       name: string | null;
       email: string | null;
       designation: string | null;
+      branch: string | null;
       department: string | null;
       manager_code: string | null;
       is_active: boolean;
@@ -49,13 +50,14 @@ export class SynapseHrClient implements FrappeHrClient {
              NULLIF(trim(concat_ws(' ', e.first_name, e.last_name)), '')     AS name,
              e.email,
              e.designation,
+             e.branch,
              e.department,
              COALESCE(e.reporting_manager_code, u.reporting_manager_code)    AS manager_code,
              e.employment_status = 'ACTIVE'                                  AS is_active
         FROM hr_employee e
         LEFT JOIN user_details u ON u.hr_employee_id = e.id
       UNION ALL
-      SELECT u.employee_code, u.full_name, u.email, u.designation, u.department,
+      SELECT u.employee_code, u.full_name, u.email, u.designation, NULL AS branch, u.department,
              u.reporting_manager_code,
              u.is_active AND NOT u.is_suspended
         FROM user_details u
@@ -67,6 +69,7 @@ export class SynapseHrClient implements FrappeHrClient {
       fullName: r.name ?? r.code,
       email: r.email,
       designation: r.designation,
+      branch: r.branch,
       departmentId: r.department,
       managerEmployeeId: r.manager_code,
       isActive: r.is_active,

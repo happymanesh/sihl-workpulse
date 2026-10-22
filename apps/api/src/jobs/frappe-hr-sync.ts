@@ -13,6 +13,43 @@ import { createFrappeHrClient, hrSource, type FrappeHrClient } from "./frappe-hr
  * Employees, since a manager may appear later in the source list than their
  * report.
  */
+/**
+ * Fold a free-text value onto its governed row, creating one the first time a
+ * spelling is seen.
+ *
+ * Matching is on the normalised form - lower-cased, whitespace collapsed - so
+ * "Executive", "EXECUTIVE" and "Executive  " are one row rather than three.
+ * The first spelling seen becomes the display name; an administrator renames
+ * it afterwards without touching a single employee record, because everybody
+ * points at the row rather than at the text.
+ *
+ * New rows arrive unreviewed. That is deliberate: it is the queue a person
+ * works through, not a list the sync is entitled to call finished.
+ */
+async function resolveMaster(
+  table: "designation" | "branch",
+  raw: string | null | undefined,
+): Promise<string | null> {
+  const name = raw?.trim().replace(/\s+/g, " ");
+  if (!name) return null;
+
+  const normalised = name.toLowerCase();
+
+  // Written out per table rather than picking the delegate dynamically:
+  // Prisma's two delegates do not unify into one callable type.
+  if (table === "designation") {
+    const found = await prisma.designation.findUnique({ where: { normalised } });
+    if (found) return found.id;
+    const made = await prisma.designation.create({ data: { name, normalised } });
+    return made.id;
+  }
+
+  const found = await prisma.branch.findUnique({ where: { normalised } });
+  if (found) return found.id;
+  const made = await prisma.branch.create({ data: { name, normalised } });
+  return made.id;
+}
+
 export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrClient()): Promise<FrappeHrSyncResult> {
   const startedAt = new Date().toISOString();
   const errors: string[] = [];
@@ -60,6 +97,9 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
         ? await prisma.department.findUnique({ where: { frappeDepartmentId: emp.departmentId } })
         : null;
 
+      const designationId = await resolveMaster("designation", emp.designation);
+      const branchId = await resolveMaster("branch", emp.branch);
+
       await prisma.employee.upsert({
         where: { employeeCode: emp.employeeId },
         create: {
@@ -67,6 +107,9 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
           name: emp.fullName,
           email: emp.email,
           designation: emp.designation,
+          branch: emp.branch ?? null,
+          designationId,
+          branchId,
           isActive: emp.isActive,
           departmentId: department?.id,
         },
@@ -74,6 +117,9 @@ export async function runFrappeHrSync(client: FrappeHrClient = createFrappeHrCli
           name: emp.fullName,
           email: emp.email,
           designation: emp.designation,
+          branch: emp.branch ?? null,
+          designationId,
+          branchId,
           isActive: emp.isActive,
           departmentId: department?.id,
           lastSyncedAt: new Date(),

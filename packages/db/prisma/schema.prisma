@@ -41,11 +41,23 @@ model Employee {
   name         String
   /// Not unique and not required: team-shared mailboxes and staff without email exist.
   email        String?
+  /// The raw designation as HR spells it, kept beside the governed one so a
+  /// mapping can always be re-derived from what the vendor actually sent.
   designation  String?
+  /// The raw branch, same reasoning.
+  branch       String?
   isActive     Boolean @default(true)
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
+
+  /// The governed masters. Nullable because HR sends these as free text and a
+  /// row only exists once the sync has seen the value at least once.
+  designationId     String?
+  designationMaster Designation? @relation(fields: [designationId], references: [id])
+
+  branchId     String?
+  branchMaster Branch? @relation(fields: [branchId], references: [id])
 
   managerId String?
   manager   Employee?  @relation("EmployeeManager", fields: [managerId], references: [id])
@@ -100,6 +112,56 @@ model Employee {
 }
 
 /// Cached read copy of Frappe HR's Department doctype.
+/// A governed list of job titles.
+///
+/// HR sends designation as free text, and free text multiplies: the feed holds
+/// 159 distinct values, many of them the same job spelled differently. The sync
+/// matches on `normalised` rather than on what it was sent, so "Executive",
+/// "EXECUTIVE" and "Executive " are one row, and an administrator can rename
+/// that row without touching anybody's record.
+///
+/// Rows the sync invents arrive `reviewed = false`. That is the queue: somebody
+/// confirms the spelling, merges the near-duplicates the normaliser could not
+/// catch, and what is left is a list the firm actually means.
+model Designation {
+  id String @id @default(cuid())
+
+  /// How it is written wherever it is shown.
+  name String
+  /// Lower-cased and whitespace-collapsed. Unique, and what the sync matches
+  /// on, so two spellings cannot both create a row.
+  normalised String @unique
+
+  isActive Boolean @default(true)
+  /// False until a person has looked at it. Never set by the sync.
+  reviewed Boolean @default(false)
+
+  employees Employee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("designations")
+}
+
+/// A governed list of offices, on the same terms as Designation.
+model Branch {
+  id String @id @default(cuid())
+
+  name       String
+  normalised String @unique
+
+  isActive Boolean @default(true)
+  reviewed Boolean @default(false)
+
+  employees Employee[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("branches")
+}
+
 model Department {
   id                 String @id @default(cuid())
   frappeDepartmentId String @unique
