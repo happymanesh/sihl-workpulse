@@ -83,6 +83,24 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
   const c = card.data!;
   const canApprove = c.status !== "APPROVED" && c.activities.some((a) => a.status === "APPROVED");
 
+  /**
+   * Why the card cannot be approved yet, said precisely.
+   *
+   * "Approve an activity first" is true and useless: the activity usually
+   * cannot be approved either, for a reason two steps further in. Each line
+   * here names the actual next action for one activity.
+   */
+  const blockers = c.activities
+    .filter((a) => a.status !== "APPROVED")
+    .map((a) => {
+      if (!a.process) return `“${a.title}” — set the control it serves, on its row`;
+      const needsWorkflow = a.priority === "CRITICAL" || a.taskType.requiresVerification;
+      if (needsWorkflow && (a.workflow?.versions.length ?? 0) === 0) {
+        return `“${a.title}” — write its steps, then a second person approves them`;
+      }
+      return `“${a.title}” — ready; approve it on its row`;
+    });
+
   return (
     <div className="flex flex-col gap-4">
       <Link href="/desk-cards" className="inline-flex w-fit items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground">
@@ -132,9 +150,18 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
               </Button>
             )}
             {c.status !== "APPROVED" && !canApprove && (
-              <p className="text-2xs text-muted-foreground">
-                Approve at least one activity before the card can be approved.
-              </p>
+              <div className="flex flex-col gap-1">
+                <p className="text-xs font-medium">
+                  {c.activities.length === 0
+                    ? "This card has no activities yet, so there is nothing to approve."
+                    : "At least one activity must be approved before this card can be. Outstanding:"}
+                </p>
+                {blockers.map((b) => (
+                  <p key={b} className="text-2xs text-muted-foreground">
+                    {b}
+                  </p>
+                ))}
+              </div>
             )}
           </div>
         </CardContent>

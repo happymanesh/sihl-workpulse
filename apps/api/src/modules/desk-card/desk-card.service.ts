@@ -73,7 +73,20 @@ export class DeskCardService {
         activities: {
           orderBy: [{ priority: "asc" }, { title: "asc" }],
           include: {
-            taskType: { select: { id: true, code: true, name: true } },
+            // requiresVerification comes along because the detail screen has to
+            // explain WHY an activity cannot be approved yet, and that answer
+            // depends on it. Without these the screen can only say "approve an
+            // activity first", which is true and useless.
+            taskType: { select: { id: true, code: true, name: true, requiresVerification: true } },
+            workflow: {
+              select: {
+                versions: {
+                  where: { status: ApprovalStatus.APPROVED },
+                  select: { id: true },
+                  take: 1,
+                },
+              },
+            },
             // The control each obligation serves. Without it the detail page
             // cannot show why the work exists, which is the whole point of
             // requiring the link before approval.
