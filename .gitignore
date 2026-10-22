@@ -43,3 +43,7 @@ coverage/
 
 # Uploaded attachments. Content-addressed blobs, never source.
 storage/
+
+# Deck exports. The CEO deck lives as an Artifact; a .pptx here is a snapshot of
+# it that goes stale the moment the deck is edited, so it is not the source.
+docs/*.pptx
