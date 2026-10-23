@@ -44,6 +44,7 @@ import { ReferenceService } from "../modules/reference/reference.service";
 import { TaskTypeService } from "../modules/reference/task-type.service";
 import { OrgMasterService } from "../modules/reference/org-master.service";
 import { runFrappeHrSync } from "../jobs/frappe-hr-sync";
+import { BUILD_REVISION, BUILD_VERSION } from "../build-revision";
 import { transitionMap } from "../modules/task/task-lifecycle";
 import { TaskService } from "../modules/task/task.service";
 import { TaskCommentService } from "../modules/task/task-comment.service";
@@ -114,6 +115,16 @@ export class TrpcService {
         ping: publicProcedure.query(() => ({ ok: true as const, at: new Date() })),
         /** Who the caller is, as workPulse resolved them from the Synapse session. */
         me: protectedProcedure.query(({ ctx }) => ctx.user),
+
+        /**
+         * Which build is serving this request. Shown on the profile screen so
+         * "what is deployed?" can be answered by anybody looking at the app,
+         * rather than only by somebody with shell access to the server.
+         */
+        version: protectedProcedure.query(() => ({
+          version: BUILD_VERSION,
+          revision: BUILD_REVISION,
+        })),
       }),
 
       reference: router({

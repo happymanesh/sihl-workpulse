@@ -20,6 +20,7 @@ import { trpc } from "@/lib/trpc/client";
  */
 export default function ProfilePage() {
   const me = trpc.meta.me.useQuery();
+  const build = trpc.meta.version.useQuery();
   const deskCard = trpc.deskCard.mine.useQuery();
 
   const user = me.data;
@@ -117,6 +118,19 @@ export default function ProfilePage() {
 
           <div className="mt-1 border-t border-border pt-3">
             <HelpFaqs roles={(user?.roles ?? []) as RoleName[]} />
+          </div>
+
+          {/* Which build is actually serving this page. Quote it when
+              reporting anything: it is the difference between a bug and an
+              environment running last week's code. */}
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-3">
+            <span className="label-caps">Version</span>
+            <span className="font-mono text-2xs text-muted-foreground">
+              {build.data ? `${build.data.version} · ${build.data.revision}` : "…"}
+            </span>
+            <span className="text-2xs text-muted-foreground">
+              Quote this when you report a problem.
+            </span>
           </div>
         </CardContent>
       </Card>
