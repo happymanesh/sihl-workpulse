@@ -11,9 +11,14 @@ import { execFileSync } from "node:child_process";
  * Never throws: a service that will not start because it could not name its
  * own commit is worse than one that says "unknown".
  *
- * Note it is captured at START, not at request time. A process left running
- * while the working copy moves on keeps reporting the commit it booted from —
- * which is the honest answer, because that is the code it is actually running.
+ * Captured at START, not per request. In production that is exactly right: a
+ * deploy restarts the process, so the value and the code change together.
+ *
+ * In watch-mode development it can mislead. The dev server reloads code into a
+ * process that keeps running, so this still reports the commit it booted from
+ * while serving code from several commits later. If the number looks stale on
+ * a developer machine, restart the API rather than hunting for a bug — that is
+ * the whole of it.
  */
 export const BUILD_REVISION: string = (() => {
   const fromEnv = process.env.GIT_SHA?.trim();
