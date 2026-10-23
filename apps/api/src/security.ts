@@ -1,7 +1,7 @@
 import type { INestApplication } from "@nestjs/common";
 import { Logger } from "@nestjs/common";
 import helmet from "helmet";
-import { rateLimit, type Options } from "express-rate-limit";
+import { rateLimit, ipKeyGenerator, type Options } from "express-rate-limit";
 import type { Request } from "express";
 
 /**
@@ -77,7 +77,11 @@ function callerKey(req: Request): string {
     for (let i = 0; i < token.length; i++) hash = (hash * 31 + token.charCodeAt(i)) | 0;
     return `s:${hash}`;
   }
-  return `ip:${req.ip ?? "unknown"}`;
+  // ipKeyGenerator, not req.ip directly: a single IPv6 user is handed a whole /64 and can
+  // vary the address per request, so bucketing on the raw value means the limit never
+  // binds. express-rate-limit v8 refuses to start rather than let that ship silently —
+  // which is how this surfaced: the API threw ERR_ERL_KEY_GEN_IPV6 at bootstrap.
+  return `ip:${req.ip ? ipKeyGenerator(req.ip) : "unknown"}`;
 }
 
 const logger = new Logger("RateLimit");
