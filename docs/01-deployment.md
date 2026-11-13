@@ -24,7 +24,7 @@ them for the first time at 2pm.
 
 workPulse has **no login screen and no user table of its own**. It reads the
 `synapse_session` cookie that Synapse already set, verifies it with the shared
-`SESSION_SECRET`, and checks the user is still active by querying Synapse's database
+`SESSION_PUBLIC_KEY`, and checks the user is still active by querying Synapse's database
 directly on every request. A workPulse `User` row is created lazily on first successful
 sign-in.
 
@@ -46,7 +46,7 @@ Set these on the host. `.env` is gitignored and deliberately absent from the rep
 |---|---|---|
 | `DATABASE_URL` | `postgresql://workpulse:pass@localhost:5432/workpulse` | workPulse's own database. Read by the app, Prisma CLI and the seed. |
 | `SYNAPSE_DATABASE_URL` | `postgresql://synapse_readonly:pass@localhost:5432/sihl_synapse` | Synapse's database, **read-only role** (§3.2). Without it every request is rejected, because the active-user check cannot run. |
-| `SESSION_SECRET` | *(copy from Synapse)* | **Must be byte-identical to Synapse's.** It is how the session signature is verified. A mismatch means every user is rejected as unauthenticated, with no clue why. |
+| `SESSION_PUBLIC_KEY` | *(Synapse's RS256 public key)* | Verifies the session signature. **Not a secret** — it cannot sign, only check. A mismatch means every user is rejected as unauthenticated, with no clue why. |
 | `NODE_ENV` | `production` | Also controls the `secure` flag on Synapse's cookie — see §9.1. |
 
 ### Strongly recommended
@@ -371,13 +371,13 @@ identical; what must not be identical is what each one points at.
 ### Pair each workPulse with the Synapse of its own tier
 
 workPulse has no identity of its own. It reads the cookie a Synapse set, verifies it with
-that Synapse's `SESSION_SECRET`, and checks the user against that Synapse's database. So a
+that Synapse's `SESSION_PUBLIC_KEY`, and checks the user against that Synapse's database. So a
 workPulse belongs to exactly one Synapse, and three settings must agree with it:
 
 | Setting | Preprod | Production |
 |---|---|---|
 | Hostname it is served from | same host as **Synapse UAT** | same host as **Synapse production** |
-| `SESSION_SECRET` | Synapse UAT's | Synapse production's |
+| `SESSION_PUBLIC_KEY` | Synapse UAT's | Synapse production's |
 | `SYNAPSE_DATABASE_URL` | Synapse UAT's database | Synapse production's database |
 | `DATABASE_URL` | its own preprod database | its own production database |
 
