@@ -30,7 +30,14 @@ import { RoleMapService } from "../modules/auth/role-map.service";
 import { SlaService } from "../modules/sla/sla.service";
 import { AnalyticsService } from "../modules/analytics/analytics.service";
 import { FlagService } from "../modules/analytics/flag.service";
-import { MisService } from "../modules/analytics/mis.service";
+import { MIS_STAGES, MisService, type MisStageKey } from "../modules/analytics/mis.service";
+
+/**
+ * The stage keys as a tuple, which is the shape z.enum needs. Derived from
+ * MIS_STAGES so a stage added there is accepted here without a second edit.
+ */
+const MIS_STAGE_KEYS = MIS_STAGES.map((s) => s.key) as [MisStageKey, ...MisStageKey[]];
+import { NotificationService } from "../modules/notification/notification.service";
 import { ShadowScoreService } from "../modules/analytics/shadow-score.service";
 import { AppraisalService } from "../modules/appraisal/appraisal.service";
 import { CommandCentreService } from "../modules/command-centre/command-centre.service";
@@ -97,6 +104,7 @@ export class TrpcService {
     private readonly slaService: SlaService,
     private readonly handoverService: HandoverService,
     private readonly misService: MisService,
+    private readonly notificationService: NotificationService,
     private readonly analyticsService: AnalyticsService,
     private readonly flagService: FlagService,
     private readonly commandCentreService: CommandCentreService,
@@ -111,6 +119,28 @@ export class TrpcService {
 
   private buildRouter() {
     return router({
+      notification: router({
+        mine: protectedProcedure
+          .input(
+            z
+              .object({ unreadOnly: z.boolean().default(false), limit: z.number().int().min(1).max(100).optional() })
+              .default({ unreadOnly: false }),
+          )
+          .query(({ ctx, input }) => this.notificationService.listMine(ctx.user, input)),
+
+        unreadCount: protectedProcedure.query(({ ctx }) =>
+          this.notificationService.unreadCount(ctx.user),
+        ),
+
+        markRead: protectedProcedure
+          .input(z.object({ id: z.string() }))
+          .mutation(({ ctx, input }) => this.notificationService.markRead(ctx.user, input.id)),
+
+        markAllRead: protectedProcedure.mutation(({ ctx }) =>
+          this.notificationService.markAllRead(ctx.user),
+        ),
+      }),
+
       meta: router({
         ping: publicProcedure.query(() => ({ ok: true as const, at: new Date() })),
         /** Who the caller is, as workPulse resolved them from the Synapse session. */
@@ -951,8 +981,23 @@ export class TrpcService {
 
       task: router({
         mine: protectedProcedure
-          .input(z.object({ includeClosed: z.boolean().default(false) }).default({ includeClosed: false }))
+          .input(
+            z
+              .object({
+                includeClosed: z.boolean().default(false),
+                /** An explicit status picks exactly those; it overrides includeClosed. */
+                statuses: z.array(z.nativeEnum(TaskStatus)).max(20).optional(),
+                from: z.date().optional(),
+                to: z.date().optional(),
+                search: z.string().max(200).optional(),
+              })
+              .default({ includeClosed: false }),
+          )
           .query(({ ctx, input }) => this.taskService.findMine(ctx.user, input)),
+
+        myStatusCounts: protectedProcedure.query(({ ctx }) =>
+          this.taskService.myStatusCounts(ctx.user),
+        ),
 
         byId: protectedProcedure
           .input(z.object({ id: z.string() }))
@@ -972,6 +1017,7 @@ export class TrpcService {
               estimatedMinutes: z.number().int().positive().optional(),
               complexity: z.nativeEnum(Complexity).optional(),
               checklist: z.array(z.string().min(1).max(300)).max(50).optional(),
+              relatedTaskId: z.string().optional(),
             }),
           )
           .mutation(({ ctx, input }) => this.taskService.create(ctx.user, input)),
@@ -1053,6 +1099,38 @@ export class TrpcService {
           .input(z.object({ attachmentId: z.string(), reason: z.string().min(3).max(1000) }))
           .mutation(({ ctx, input }) => this.attachmentService.remove(ctx.user, input)),
 
+        addChecklistItem: protectedProcedure
+          .input(z.object({ taskId: z.string(), label: z.string().min(1).max(300) }))
+          .mutation(({ ctx, input }) =>
+            this.taskService.addChecklistItem(ctx.user, input.taskId, input.label),
+          ),
+
+        removeChecklistItem: protectedProcedure
+          .input(z.object({ itemId: z.string() }))
+          .mutation(({ ctx, input }) =>
+            this.taskService.removeChecklistItem(ctx.user, input.itemId),
+          ),
+
+        /** Point this task at earlier work. Reference only - nothing is gated. */
+        setRelatedTask: protectedProcedure
+          .input(z.object({ taskId: z.string(), relatedTaskId: z.string().nullable() }))
+          .mutation(({ ctx, input }) =>
+            this.taskService.setRelatedTask(ctx.user, input.taskId, input.relatedTaskId),
+          ),
+
+        /** Candidates for that link: my tasks, newest first, excluding this one. */
+        linkable: protectedProcedure
+          .input(
+            z
+              .object({
+                /** Absent while creating: there is no task to exclude yet. */
+                taskId: z.string().optional(),
+                search: z.string().max(200).optional(),
+              })
+              .default({}),
+          )
+          .query(({ ctx, input }) => this.taskService.linkable(ctx.user, input.taskId, input.search)),
+
         setChecklistItem: protectedProcedure
           .input(
             z.object({
@@ -1069,6 +1147,14 @@ export class TrpcService {
           ),
       }),
       mis: router({
+        /**
+         * The stage columns, so the screen cannot drift from the grouping the
+         * counting actually used. Labels and order come from one place.
+         */
+        stages: protectedProcedure.query(() =>
+          MIS_STAGES.map((s) => ({ key: s.key, label: s.label })),
+        ),
+
         /** Level 1. Scoped to what the caller may see; the scope is disclosed. */
         enterprise: requireRoles(...MANAGEMENT_ROLES, "AUDIT")
           .input(z.object({ periodStart: z.date(), periodEnd: z.date() }))
@@ -1089,12 +1175,52 @@ export class TrpcService {
             this.misService.byEmployee(ctx.user, input.departmentId, input.periodStart, input.periodEnd),
           ),
 
+        /** The table above as a file, built from the same methods the screen calls. */
+        csvRows: requireRoles(...MANAGEMENT_ROLES, "AUDIT")
+          .input(
+            z.object({
+              departmentId: z.string().optional(),
+              periodStart: z.date(),
+              periodEnd: z.date(),
+            }),
+          )
+          .query(({ ctx, input }) =>
+            this.misService.csvRows(
+              ctx.user,
+              { departmentId: input.departmentId },
+              input.periodStart,
+              input.periodEnd,
+            ),
+          ),
+
+        /** The tasks behind a figure, as a file. */
+        csvTasks: requireRoles(...MANAGEMENT_ROLES, "AUDIT")
+          .input(
+            z.object({
+              departmentId: z.string().optional(),
+              employeeId: z.string().optional(),
+              stage: z.enum(MIS_STAGE_KEYS).optional(),
+              periodStart: z.date(),
+              periodEnd: z.date(),
+            }),
+          )
+          .query(({ ctx, input }) =>
+            this.misService.csvTasks(
+              ctx.user,
+              { departmentId: input.departmentId, employeeId: input.employeeId, stage: input.stage },
+              input.periodStart,
+              input.periodEnd,
+            ),
+          ),
+
         /** Level 4. Every figure above is drillable to the tasks behind it. */
         tasks: requireRoles(...MANAGEMENT_ROLES, "AUDIT")
           .input(
             z.object({
               departmentId: z.string().optional(),
               employeeId: z.string().optional(),
+              /** Narrow to one column of the table above. */
+              stage: z.enum(MIS_STAGE_KEYS).optional(),
               periodStart: z.date(),
               periodEnd: z.date(),
             }),
@@ -1102,7 +1228,7 @@ export class TrpcService {
           .query(({ ctx, input }) =>
             this.misService.tasksFor(
               ctx.user,
-              { departmentId: input.departmentId, employeeId: input.employeeId },
+              { departmentId: input.departmentId, employeeId: input.employeeId, stage: input.stage },
               input.periodStart,
               input.periodEnd,
             ),

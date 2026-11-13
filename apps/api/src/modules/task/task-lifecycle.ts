@@ -124,6 +124,15 @@ export interface TransitionRequest {
   checklistSatisfied: boolean;
   /** The Task Type demands a reviewer confirm the work. */
   requiresVerification: boolean;
+  /**
+   * A reviewer is named on this task.
+   *
+   * Naming someone is a commitment, not a suggestion: the reviewer named when
+   * the work was handed out is the person who must confirm it, whatever the
+   * type demands. Without this, a reviewer on an ordinary type was advisory -
+   * the assignee could close straight past them, which is what testing found.
+   */
+  hasNamedReviewer: boolean;
   /** Some evidence exists: a comment, an attachment, or a completed checklist. */
   hasEvidence: boolean;
   /** The Task Type demands evidence before closure. */
@@ -139,6 +148,21 @@ export type TransitionErrorCode =
   | "REASON_REQUIRED"
   | "CHECKLIST_INCOMPLETE"
   | "VERIFICATION_REQUIRED";
+
+/**
+ * Whether this task must be Verified before it can be Closed.
+ *
+ * Two ways in, and either is enough: the Task Type demands verification, or
+ * somebody was named to review this particular task. Exported so the screens
+ * can say "Review pending" from the same rule the server enforces, rather than
+ * restating it and drifting from it.
+ */
+export function isReviewRequired(req: {
+  requiresVerification: boolean;
+  hasNamedReviewer: boolean;
+}): boolean {
+  return req.requiresVerification || req.hasNamedReviewer;
+}
 
 export function canTransition(req: TransitionRequest): TransitionResult {
   const { from, to } = req;
@@ -173,12 +197,14 @@ export function canTransition(req: TransitionRequest): TransitionResult {
     };
   }
 
-  // Section 14.1: types requiring verification cannot jump Completed -> Closed.
-  if (to === TaskStatus.CLOSED && req.requiresVerification && from !== TaskStatus.VERIFIED) {
+  // Section 14.1: work under review cannot jump Completed -> Closed.
+  if (to === TaskStatus.CLOSED && isReviewRequired(req) && from !== TaskStatus.VERIFIED) {
     return {
       ok: false,
       code: "VERIFICATION_REQUIRED",
-      message: "This task type must be Verified before it can be Closed",
+      message: req.requiresVerification
+        ? "Review pending: this task type must be Verified before it can be Closed"
+        : "Review pending: a reviewer is named on this task, so it must be Verified before it can be Closed",
     };
   }
 

@@ -8,6 +8,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { trpc } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
+import { formatHhMm } from "@/lib/duration";
 
 type View = "day" | "week" | "month";
 
@@ -175,8 +176,8 @@ function UtilisationBar({ util }: { util: UtilisationData }) {
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <span className="label-caps">Committed this week</span>
           <span className={cn("text-sm font-semibold tabular", util.isOverAllocated && "text-danger")}>
-            {(util.committedMinutes / 60).toFixed(1)}h
-            {util.hasBudget && ` of ${(util.budgetMinutes / 60).toFixed(0)}h · ${util.percent}%`}
+            {formatHhMm(util.committedMinutes)}
+            {util.hasBudget && ` of ${formatHhMm(util.budgetMinutes)} · ${util.percent}%`}
           </span>
         </div>
 
@@ -202,7 +203,7 @@ function UtilisationBar({ util }: { util: UtilisationData }) {
 
         <p className="text-2xs text-muted-foreground">
           Committed comes from your desk card&apos;s approved activities. Blocked time this week:{" "}
-          <span className="tabular">{(util.blockedMinutes / 60).toFixed(1)}h</span>.
+          <span className="tabular">{formatHhMm(util.blockedMinutes)}</span>.
         </p>
       </CardContent>
     </Card>

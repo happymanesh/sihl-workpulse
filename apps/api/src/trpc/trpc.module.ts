@@ -8,6 +8,7 @@ import { PredictionModule } from "../modules/prediction/prediction.module";
 import { AppraisalModule } from "../modules/appraisal/appraisal.module";
 import { ProjectModule } from "../modules/project/project.module";
 import { GovernanceModule } from "../modules/governance/governance.module";
+import { NotificationModule } from "../modules/notification/notification.module";
 import { WorkflowModule } from "../modules/workflow/workflow.module";
 import { CapacityModule } from "../modules/capacity/capacity.module";
 import { DeskCardModule } from "../modules/desk-card/desk-card.module";
@@ -19,7 +20,7 @@ import { IntakeModule } from "../modules/intake/intake.module";
 import { TrpcService } from "./trpc.service";
 
 @Module({
-  imports: [AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule, AttachmentModule, IntakeModule],
+  imports: [NotificationModule, AuthModule, EmployeeModule, DeskCardModule, TaskModule, ReferenceModule, CapacityModule, WorkflowModule, GovernanceModule, ProjectModule, SlaModule, LifecycleModule, AnalyticsModule, CommandCentreModule, PredictionModule, AppraisalModule, AttachmentModule, IntakeModule],
   providers: [TrpcService],
   exports: [TrpcService],
 })

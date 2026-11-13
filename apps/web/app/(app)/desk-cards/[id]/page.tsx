@@ -10,6 +10,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { WorkflowEditor } from "@/components/desk-card/workflow-editor";
 import { trpc, type RouterOutputs } from "@/lib/trpc/client";
+import { formatHhMm } from "@/lib/duration";
+import { DurationInput } from "@/components/ui/duration-input";
 
 const STATUS_TONE = { DRAFT: "neutral", PENDING_REVIEW: "warning", APPROVED: "success", RETIRED: "neutral" } as const;
 const FREQUENCIES = ["", "DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "YEARLY"] as const;
@@ -230,7 +232,7 @@ export default function DeskCardDetailPage({ params }: { params: Promise<{ id: s
                         </select>
                       )}
                     </td>
-                    <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{a.estimatedMinutes}m</td>
+                    <td className="px-4 py-2.5 text-right text-xs tabular text-muted-foreground">{formatHhMm(a.estimatedMinutes)}</td>
                     <td className="px-4 py-2.5">
                       <PriorityTag priority={a.priority as Priority} />
                     </td>
@@ -645,17 +647,16 @@ function AddActivity({
           </Field>
 
           <Field
-            label="Estimated effort (minutes)"
+            label="Estimated effort"
             htmlFor="ae"
             required
             hint="Set here by you, not the holder — it drives capacity and scoring"
           >
-            <Input
+            <DurationInput
               id="ae"
-              type="number"
-              min={1}
+              min={5}
               value={f.estimatedMinutes}
-              onChange={(e) => setF({ ...f, estimatedMinutes: Number(e.target.value) })}
+              onChange={(estimatedMinutes) => setF({ ...f, estimatedMinutes })}
             />
           </Field>
 
@@ -859,13 +860,12 @@ function ActivityEditor({
               </Select>
             </Field>
 
-            <Field label="Estimated effort (minutes)" htmlFor={`e-m-${activity.id}`}>
-              <Input
+            <Field label="Estimated effort" htmlFor={`e-m-${activity.id}`}>
+              <DurationInput
                 id={`e-m-${activity.id}`}
-                type="number"
-                min={1}
+                min={5}
                 value={f.estimatedMinutes}
-                onChange={(e) => setF({ ...f, estimatedMinutes: Number(e.target.value) })}
+                onChange={(estimatedMinutes) => setF({ ...f, estimatedMinutes })}
               />
             </Field>
 

@@ -101,6 +101,8 @@ model Employee {
   appraisalEvidence   AppraisalEvidence[]
   shadowScores        ShadowScore[]
   commandCentreEvents CommandCentreEvent[] @relation("CommandCentreSubject")
+  notifications       Notification[]       @relation("NotificationRecipient")
+  notificationsCaused Notification[]       @relation("NotificationActor")
 
   lastSyncedAt DateTime @default(now())
   createdAt    DateTime @default(now())
@@ -574,6 +576,17 @@ model Task {
 
   reviewerEmployeeId String?
   reviewer           Employee? @relation("TaskReviewer", fields: [reviewerEmployeeId], references: [id])
+
+  /// A pointer to earlier work this task follows on from. Reference only: it
+  /// changes no status and blocks no transition. The blocking relationship is
+  /// TaskDependency, which is a different thing and deliberately kept apart -
+  /// "this relates to that" and "this cannot start until that finishes" are
+  /// answers to different questions, and conflating them would mean every
+  /// cross-reference silently gated somebody's work.
+  relatedTaskId String?
+  relatedTask   Task?   @relation("TaskRelatesTo", fields: [relatedTaskId], references: [id], onDelete: SetNull)
+  /// The tasks pointing at this one, so the link reads from both ends.
+  relatedFrom   Task[]  @relation("TaskRelatesTo")
 
   departmentId String?
   department   Department? @relation(fields: [departmentId], references: [id])
@@ -1947,3 +1960,52 @@ enum TaskAttachmentKind {
   REFERENCE
 }
 
+
+/// Why somebody is being told. The kind drives the wording and the icon, and
+/// lets a reader filter; it is never used to decide who gets told - that is
+/// decided once, in notification-core.ts, where it can be tested.
+enum NotificationKind {
+  TASK_ASSIGNED
+  TASK_REVIEW_REQUESTED
+  TASK_VERIFIED
+  TASK_REJECTED
+  TASK_REOPENED
+}
+
+/// One thing one person should know about.
+///
+/// Rows are per RECIPIENT, not per event: two people told about the same
+/// transition get a row each, because read state belongs to a person. The
+/// alternative - one event row plus a join table of who has read it - buys
+/// nothing here and makes every query a join.
+model Notification {
+  id String @id @default(cuid())
+
+  recipientEmployeeId String
+  recipient           Employee @relation("NotificationRecipient", fields: [recipientEmployeeId], references: [id], onDelete: Cascade)
+
+  /// Who caused it. Null for anything the system did on its own.
+  actorEmployeeId String?
+  actor           Employee? @relation("NotificationActor", fields: [actorEmployeeId], references: [id])
+
+  kind NotificationKind
+
+  /// Written at send time and never recomputed. A notification is a record of
+  /// what somebody was told, so it must still read correctly after the task it
+  /// refers to has moved on - or been renamed, reassigned or closed.
+  title String
+  body  String?
+
+  /// What it points at. Loosely coupled on purpose: a notification outlives
+  /// the row it refers to, and a foreign key would delete the record of having
+  /// told somebody the moment the task was removed.
+  entityType String
+  entityId   String
+
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  /// The unread query, which runs on every page load for every user.
+  @@index([recipientEmployeeId, readAt, createdAt])
+  @@map("notifications")
+}

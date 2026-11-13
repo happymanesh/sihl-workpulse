@@ -13,7 +13,9 @@ import { AuditService } from "../audit/audit.service";
 import { IntakeService } from "../intake/intake.service";
 import type { AuthenticatedUser } from "../auth/identity.service";
 import { ProjectService } from "../project/project.service";
-import { canTransition, isTerminal } from "./task-lifecycle";
+import { canViewTask } from "../analytics/visibility-core";
+import { NotificationService } from "../notification/notification.service";
+import { canTransition, isReviewRequired, isTerminal } from "./task-lifecycle";
 
 export interface CreateTaskInput {
   title: string;
@@ -30,6 +32,8 @@ export interface CreateTaskInput {
   /// when the amendment lands.
   complexity?: Complexity;
   checklist?: string[];
+  /// Earlier work this follows on from. Reference only - see Task.relatedTaskId.
+  relatedTaskId?: string;
 }
 
 export interface TransitionInput {
@@ -71,6 +75,7 @@ export class TaskService {
     private readonly audit: AuditService,
     private readonly projects: ProjectService,
     private readonly intake: IntakeService,
+    private readonly notifications: NotificationService,
   ) {}
 
   /**
@@ -120,6 +125,7 @@ export class TaskService {
           status: initialStatus,
           assigneeEmployeeId: input.assigneeEmployeeId,
           reviewerEmployeeId: input.reviewerEmployeeId,
+          relatedTaskId: input.relatedTaskId,
           departmentId: input.departmentId ?? assignee.departmentId,
           dueDate: input.dueDate,
           estimatedMinutes: input.estimatedMinutes,
@@ -158,6 +164,22 @@ export class TaskService {
       },
     });
 
+    // Creating a task for somebody else hands it to them, so they are told the
+    // same way a transition into Assigned would tell them. Self-assigned work
+    // starts Accepted and announces nothing - the core rule drops the actor,
+    // and there is nobody else to inform.
+    await this.notifications.announceTransition({
+      task: {
+        id: task.id,
+        reference: task.reference,
+        title: task.title,
+        assigneeEmployeeId: task.assigneeEmployeeId,
+        reviewerEmployeeId: task.reviewerEmployeeId,
+      },
+      to: TaskStatus.ASSIGNED,
+      actorEmployeeId: actor.employeeId ?? null,
+    });
+
     return task;
   }
 
@@ -189,6 +211,7 @@ export class TaskService {
       reason: input.reason ?? input.blockedReason,
       checklistSatisfied,
       requiresVerification: task.taskType.requiresVerification,
+      hasNamedReviewer: Boolean(task.reviewerEmployeeId),
       hasEvidence,
       requiresEvidence: task.taskType.requiresEvidence,
     });
@@ -325,6 +348,23 @@ export class TaskService {
         );
     }
 
+    // Told after the move has committed, never before: an announcement about
+    // something that then failed to happen is worse than no announcement. The
+    // service swallows its own failures for the same reason the push-back
+    // above does - the transition is the event, this is the courtesy.
+    await this.notifications.announceTransition({
+      task: {
+        id: after.id,
+        reference: after.reference,
+        title: after.title,
+        assigneeEmployeeId: after.assigneeEmployeeId,
+        reviewerEmployeeId: after.reviewerEmployeeId,
+      },
+      to: input.to,
+      actorEmployeeId: actor.employeeId ?? null,
+      reason: input.reason ?? input.blockedReason,
+    });
+
     return { task: after, flaggedForReview: verdict.flagForReview };
   }
 
@@ -390,14 +430,79 @@ export class TaskService {
     };
   }
 
-  async findMine(actor: AuthenticatedUser, params: { includeClosed?: boolean } = {}) {
+  /**
+   * Work that is finished with. A task here needs nobody's attention.
+   *
+   * Rejected is deliberately NOT in this list: rejected work is waiting on the
+   * assignee to pick it back up, which is the most urgent state there is.
+   */
+  private static closedOut: TaskStatus[] = [TaskStatus.CLOSED, TaskStatus.CANCELLED];
+
+  /**
+   * What "Open" means on the list.
+   *
+   * Rejected is excluded so it stops hiding inside the Open count, and gets its
+   * own filter instead - it is a distinct thing to do, not ordinary work in
+   * flight.
+   */
+  private static notOpen: TaskStatus[] = [...TaskService.closedOut, TaskStatus.REJECTED];
+
+  async findMine(
+    actor: AuthenticatedUser,
+    params: {
+      includeClosed?: boolean;
+      statuses?: TaskStatus[];
+      from?: Date;
+      to?: Date;
+      search?: string;
+    } = {},
+  ) {
     if (!actor.employeeId) return [];
+
+    const status = params.statuses?.length
+      ? { in: params.statuses }
+      : params.includeClosed
+        ? undefined
+        : { notIn: TaskService.notOpen };
+
+    // The date range narrows history, never live work. A task created four
+    // months ago that is still open is still yours to do, and a filter that
+    // hid it would be a filter that loses work.
+    const dateRange =
+      params.from || params.to
+        ? [
+            {
+              OR: [
+                {
+                  createdAt: {
+                    ...(params.from ? { gte: params.from } : {}),
+                    ...(params.to ? { lte: params.to } : {}),
+                  },
+                },
+                { status: { notIn: TaskService.closedOut } },
+              ],
+            },
+          ]
+        : [];
+
+    const term = params.search?.trim();
+    const search = term
+      ? [
+          {
+            OR: [
+              { title: { contains: term, mode: "insensitive" as const } },
+              { reference: { contains: term, mode: "insensitive" as const } },
+              { description: { contains: term, mode: "insensitive" as const } },
+            ],
+          },
+        ]
+      : [];
+
     const rows = await prisma.task.findMany({
       where: {
         assigneeEmployeeId: actor.employeeId,
-        status: params.includeClosed
-          ? undefined
-          : { notIn: [TaskStatus.CLOSED, TaskStatus.CANCELLED] },
+        status,
+        AND: [...dateRange, ...search],
       },
       include: {
         taskType: { select: { code: true, name: true, requiresVerification: true } },
@@ -409,6 +514,33 @@ export class TaskService {
     return rows.map((t) => TaskService.withDerived(t, now));
   }
 
+  /**
+   * How many of my tasks sit in each status, for the filter chips.
+   *
+   * Counted over everything assigned to me, ignoring the date range and the
+   * search box on purpose: a chip that changed its number as you typed would
+   * be useless for deciding which chip to press.
+   */
+  async myStatusCounts(actor: AuthenticatedUser) {
+    if (!actor.employeeId) return { byStatus: {} as Record<string, number>, open: 0, total: 0 };
+
+    const grouped = await prisma.task.groupBy({
+      by: ["status"],
+      where: { assigneeEmployeeId: actor.employeeId },
+      _count: { _all: true },
+    });
+
+    const byStatus: Record<string, number> = {};
+    let open = 0;
+    let total = 0;
+    for (const g of grouped) {
+      byStatus[g.status] = g._count._all;
+      total += g._count._all;
+      if (!TaskService.notOpen.includes(g.status)) open += g._count._all;
+    }
+    return { byStatus, open, total };
+  }
+
   async findById(actor: AuthenticatedUser, id: string) {
     const task = await prisma.task.findUnique({
       where: { id },
@@ -417,13 +549,226 @@ export class TaskService {
         assignee: { select: { id: true, name: true, email: true } },
         reviewer: { select: { id: true, name: true, email: true } },
         department: { select: { id: true, name: true } },
-        deskCardActivity: { select: { id: true, title: true, deskCardId: true } },
+        deskCardActivity: {
+          select: {
+            id: true,
+            title: true,
+            deskCardId: true,
+            // Who owns the obligation this task came from. For generated work
+            // that is the accountable name, which the assignee may not be.
+            deskCard: { select: { code: true, name: true, holder: { select: { name: true } } } },
+          },
+        },
         checklistItems: { orderBy: { position: "asc" } },
         statusHistory: { orderBy: { createdAt: "asc" } },
+        relatedTask: { select: { id: true, reference: true, title: true, status: true } },
+        relatedFrom: { select: { id: true, reference: true, title: true, status: true } },
       },
     });
     if (!task) throw new NotFoundException(`Task ${id} not found`);
-    return task;
+    // Derived here rather than in the screen, so "Review pending" on the page
+    // and the refusal from the API are the same rule and cannot disagree.
+    return {
+      ...task,
+      reviewRequired: isReviewRequired({
+        requiresVerification: task.taskType.requiresVerification,
+        hasNamedReviewer: Boolean(task.reviewerEmployeeId),
+      }),
+    };
+  }
+
+  /**
+   * Stages at which the checklist is fixed.
+   *
+   * The checklist gate is what stands between "I say it is done" and Completed,
+   * so the list of steps has to be settled before that assertion is made.
+   * Adding a step after the work was declared complete would quietly change
+   * what "complete" meant, after the fact.
+   */
+  private static checklistFrozen: TaskStatus[] = [
+    TaskStatus.COMPLETED,
+    TaskStatus.VERIFIED,
+    TaskStatus.CLOSED,
+    TaskStatus.CANCELLED,
+  ];
+
+  /**
+   * Point a task at earlier work it follows on from, or clear the pointer.
+   *
+   * Reference only. Nothing about this link gates a transition - see the note
+   * on Task.relatedTaskId. A task cannot point at itself, and the target has
+   * to be one the actor can already see, so the link cannot be used to probe
+   * for the existence of work they have no access to.
+   */
+  async setRelatedTask(actor: AuthenticatedUser, taskId: string, relatedTaskId: string | null) {
+    if (taskId === relatedTaskId) {
+      throw new BadRequestException("A task cannot be linked to itself");
+    }
+
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, status: true, assigneeEmployeeId: true, reviewerEmployeeId: true, relatedTaskId: true },
+    });
+    if (!task) throw new NotFoundException(`Task ${taskId} not found`);
+
+    const isAssignee = actor.employeeId === task.assigneeEmployeeId;
+    const isReviewer = actor.employeeId === task.reviewerEmployeeId;
+    if (!isAssignee && !isReviewer && !this.canDirect(actor)) {
+      throw new ForbiddenException("Only the assignee, the reviewer or a manager can link this task");
+    }
+
+    let reference: string | null = null;
+    if (relatedTaskId) {
+      const target = await prisma.task.findUnique({
+        where: { id: relatedTaskId },
+        select: { id: true, reference: true, isConfidential: true, assigneeEmployeeId: true, reviewerEmployeeId: true },
+      });
+      if (!target) throw new NotFoundException("That task does not exist");
+
+      const verdict = canViewTask(
+        { employeeId: actor.employeeId, roles: actor.roles, managedEmployeeIds: [] },
+        {
+          isConfidential: target.isConfidential,
+          assigneeEmployeeId: target.assigneeEmployeeId,
+          reviewerEmployeeId: target.reviewerEmployeeId,
+        },
+      );
+      if (!verdict.canView) {
+        throw new ForbiddenException("You cannot see that task, so you cannot link to it");
+      }
+      reference = target.reference;
+    }
+
+    const after = await prisma.task.update({
+      where: { id: taskId },
+      data: { relatedTaskId },
+      include: { relatedTask: { select: { id: true, reference: true, title: true, status: true } } },
+    });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: taskId,
+      action: relatedTaskId ? "related_task_set" : "related_task_cleared",
+      actorId: actor.id,
+      before: { relatedTaskId: task.relatedTaskId },
+      after: { relatedTaskId, reference },
+    });
+
+    return after;
+  }
+
+  /** Tasks this person could link to: theirs, newest first, never this one. */
+  async linkable(actor: AuthenticatedUser, taskId?: string, search?: string) {
+    if (!actor.employeeId) return [];
+    const term = search?.trim();
+    return prisma.task.findMany({
+      where: {
+        ...(taskId ? { id: { not: taskId } } : {}),
+        OR: [{ assigneeEmployeeId: actor.employeeId }, { reviewerEmployeeId: actor.employeeId }],
+        ...(term
+          ? {
+              AND: [
+                {
+                  OR: [
+                    { title: { contains: term, mode: "insensitive" as const } },
+                    { reference: { contains: term, mode: "insensitive" as const } },
+                  ],
+                },
+              ],
+            }
+          : {}),
+      },
+      select: { id: true, reference: true, title: true, status: true },
+      orderBy: { createdAt: "desc" },
+      take: 25,
+    });
+  }
+
+  /** Add a step to a running task's checklist. */
+  async addChecklistItem(actor: AuthenticatedUser, taskId: string, label: string) {
+    const task = await prisma.task.findUnique({
+      where: { id: taskId },
+      select: { id: true, status: true, assigneeEmployeeId: true, reviewerEmployeeId: true },
+    });
+    if (!task) throw new NotFoundException(`Task ${taskId} not found`);
+
+    if (TaskService.checklistFrozen.includes(task.status)) {
+      throw new BadRequestException(
+        `This task is ${task.status.replace("_", " ").toLowerCase()}, so its checklist is fixed. Reopen it to add a step.`,
+      );
+    }
+
+    const isAssignee = actor.employeeId === task.assigneeEmployeeId;
+    const isReviewer = actor.employeeId === task.reviewerEmployeeId;
+    if (!isAssignee && !isReviewer && !this.canDirect(actor)) {
+      throw new ForbiddenException("Only the assignee, the reviewer or a manager can change this checklist");
+    }
+
+    const trimmed = label.trim();
+    if (!trimmed) throw new BadRequestException("A checklist step needs some text");
+
+    const last = await prisma.taskChecklistItem.findFirst({
+      where: { taskId },
+      orderBy: { position: "desc" },
+      select: { position: true },
+    });
+
+    const created = await prisma.taskChecklistItem.create({
+      data: { taskId, label: trimmed, position: (last?.position ?? -1) + 1 },
+    });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: taskId,
+      action: "checklist_item_added",
+      actorId: actor.id,
+      after: { label: created.label, position: created.position },
+    });
+
+    return created;
+  }
+
+  /**
+   * Remove a step.
+   *
+   * Only one that was never acted on. A step already done or waived is part of
+   * the record of what happened, and deleting it would let somebody tick three
+   * items, delete the fourth and present that as a complete checklist. Waiving
+   * exists for a step that turned out not to apply, and it carries a reason.
+   */
+  async removeChecklistItem(actor: AuthenticatedUser, itemId: string) {
+    const item = await prisma.taskChecklistItem.findUnique({
+      where: { id: itemId },
+      include: { task: { select: { id: true, status: true, assigneeEmployeeId: true, reviewerEmployeeId: true } } },
+    });
+    if (!item) throw new NotFoundException(`Checklist item ${itemId} not found`);
+
+    if (TaskService.checklistFrozen.includes(item.task.status)) {
+      throw new BadRequestException("This task's checklist is fixed and can no longer be changed");
+    }
+    if (item.isDone || item.waivedReason) {
+      throw new BadRequestException(
+        "This step has already been done or waived, so it stays on the record. Waive it with a reason instead of removing it.",
+      );
+    }
+
+    const isAssignee = actor.employeeId === item.task.assigneeEmployeeId;
+    const isReviewer = actor.employeeId === item.task.reviewerEmployeeId;
+    if (!isAssignee && !isReviewer && !this.canDirect(actor)) {
+      throw new ForbiddenException("Only the assignee, the reviewer or a manager can change this checklist");
+    }
+
+    await prisma.taskChecklistItem.delete({ where: { id: itemId } });
+
+    await this.audit.record({
+      entityType: "Task",
+      entityId: item.task.id,
+      action: "checklist_item_removed",
+      actorId: actor.id,
+      before: { label: item.label, position: item.position },
+    });
+
+    return { id: itemId };
   }
 
   async setChecklistItem(

@@ -2,11 +2,11 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, Download, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { trpc } from "@/lib/trpc/client";
+import { trpc, type RouterInputs } from "@/lib/trpc/client";
 import { cn } from "@/lib/utils";
 
 /** First and last instant of a calendar month, matching the API's month bounds. */
@@ -16,6 +16,30 @@ function monthBounds(offset: number) {
   const periodEnd = new Date(now.getFullYear(), now.getMonth() + offset + 1, 0, 23, 59, 59, 999);
   return { periodStart, periodEnd };
 }
+
+/**
+ * Hand the browser a file.
+ *
+ * The CSV is built on the server from the same methods the screen calls, so
+ * the file and the table can never disagree; this only has to deliver it.
+ * The object URL is revoked straight after - without it every export leaks
+ * the whole file for as long as the tab is open.
+ */
+async function download(work: Promise<{ filename: string; csv: string }>) {
+  const { filename, csv } = await work;
+  // The BOM is what makes Excel read UTF-8 rather than the local codepage,
+  // which otherwise mangles every name with an accent in it.
+  const blob = new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/** The stage keys the API accepts, taken from the router itself. */
+type StageKey = RouterInputs["mis"]["tasks"]["stage"];
 
 type Level =
   | { kind: "enterprise" }
@@ -27,6 +51,25 @@ export default function MisPage() {
   const [level, setLevel] = useState<Level>({ kind: "enterprise" });
   const period = useMemo(() => monthBounds(monthOffset), [monthOffset]);
 
+  // Which column of the table above is being listed below, if any. Typed from
+  // the router so a stage renamed on the server breaks the build here rather
+  // than silently returning an unfiltered list.
+  const [stage, setStage] = useState<StageKey>(undefined);
+
+  const utils = trpc.useUtils();
+  const [exporting, setExporting] = useState(false);
+
+  /** Fetch a CSV through the same router the table uses, then hand it over. */
+  async function exportCsv(work: () => Promise<{ filename: string; csv: string }>) {
+    setExporting(true);
+    try {
+      await download(work());
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  const stages = trpc.mis.stages.useQuery();
   const enterprise = trpc.mis.enterprise.useQuery(period);
   const departments = trpc.mis.byDepartment.useQuery(period, { enabled: level.kind !== "employee" });
   // The department currently in view, whichever level we are at.
@@ -45,6 +88,7 @@ export default function MisPage() {
     {
       departmentId: activeDepartment?.id,
       employeeId: level.kind === "employee" ? level.id : undefined,
+      stage,
       ...period,
     },
     { enabled: activeDepartment !== null },
@@ -111,14 +155,41 @@ export default function MisPage() {
 
       {/* Level 1 */}
       <Card>
-        <CardContent className="flex flex-wrap gap-x-10 gap-y-3">
-          <Metric label="Total tasks" value={e?.total} />
-          <Metric label="Open" value={e?.open} />
-          <Metric label="Overdue" value={e?.overdue} tone={e && e.overdue > 0 ? "danger" : undefined} />
-          <Metric label="Critical" value={e?.critical} tone={e && e.critical > 0 ? "warning" : undefined} />
-          <Metric label="Blocked" value={e?.blocked} tone={e && e.blocked > 0 ? "danger" : undefined} />
-          <Metric label="Missed" value={e?.missed} tone={e && e.missed > 0 ? "danger" : undefined} />
-          <Metric label="On time" value={e?.onTimePercent === null ? "—" : e ? `${e.onTimePercent}%` : undefined} />
+        <CardContent className="flex flex-col gap-3">
+          <div className="flex flex-wrap gap-x-8 gap-y-3">
+            {((stages.data ?? []) as Stage[]).map((st) => (
+              <Metric
+                key={st.key}
+                label={st.label}
+                value={e?.stages[st.key as keyof typeof e.stages]}
+                tone={
+                  st.key === "blocked" && (e?.stages.blocked ?? 0) > 0
+                    ? "danger"
+                    : st.key === "rejected" && (e?.stages.rejected ?? 0) > 0
+                      ? "warning"
+                      : undefined
+                }
+              />
+            ))}
+          </div>
+          <div className="flex flex-wrap gap-x-8 gap-y-3 border-t border-border pt-3">
+            <Metric label="Total" value={e?.total} />
+            <Metric label="Overdue" value={e?.overdue} tone={e && e.overdue > 0 ? "danger" : undefined} />
+            <Metric label="Critical" value={e?.critical} tone={e && e.critical > 0 ? "warning" : undefined} />
+            <Metric
+              label="Never started"
+              value={e?.neverStarted}
+              tone={e && e.neverStarted > 0 ? "danger" : undefined}
+            />
+            <Metric
+              label="On time"
+              value={e?.onTimePercent === null ? "—" : e ? `${e.onTimePercent}%` : undefined}
+            />
+          </div>
+          <p className="text-2xs text-muted-foreground">
+            On time is measured over work finished this period — an open task has no completion date to
+            compare. Never started counts recurring work that came due and was never opened.
+          </p>
         </CardContent>
       </Card>
 
@@ -141,37 +212,96 @@ export default function MisPage() {
         <RowTable
           heading="Department"
           rows={departments.data ?? []}
+          stages={(stages.data ?? []) as Stage[]}
           loading={departments.isLoading}
-          onDrill={(r) => setLevel({ kind: "department", id: r.id, label: r.label })}
+          activeStage={stage}
+          onDrill={(r) => {
+            setStage(undefined);
+            setLevel({ kind: "department", id: r.id, label: r.label });
+          }}
+          onDrillStage={(r, key) => {
+            setStage(key);
+            setLevel({ kind: "department", id: r.id, label: r.label });
+          }}
+          onExport={() => exportCsv(() => utils.mis.csvRows.fetch({ ...period }))}
+          exporting={exporting}
         />
       ) : (
         <RowTable
           heading="Team member"
           rows={employees.data ?? []}
+          stages={(stages.data ?? []) as Stage[]}
           loading={employees.isLoading}
           activeId={level.kind === "employee" ? level.id : undefined}
-          onDrill={(r) =>
+          activeStage={stage}
+          onDrill={(r) => {
+            setStage(undefined);
             setLevel({
               kind: "employee",
               id: r.id,
               label: r.label,
               departmentId: activeDepartment?.id ?? "",
               departmentLabel: activeDepartment?.label ?? "",
-            })
+            });
+          }}
+          onDrillStage={(r, key) => {
+            setStage(key);
+            setLevel({
+              kind: "employee",
+              id: r.id,
+              label: r.label,
+              departmentId: activeDepartment?.id ?? "",
+              departmentLabel: activeDepartment?.label ?? "",
+            });
+          }}
+          onExport={() =>
+            exportCsv(() => utils.mis.csvRows.fetch({ departmentId: activeDepartment?.id, ...period }))
           }
+          exporting={exporting}
         />
       )}
 
       {/* Level 4 - every figure above reaches the tasks behind it */}
       {level.kind !== "enterprise" && (
         <Card className="overflow-hidden">
-          <div className="border-b border-border bg-muted/40 px-4 py-2.5">
-            <span className="label-caps">Tasks — {level.label}</span>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border bg-muted/40 px-4 py-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="label-caps">
+                Tasks — {level.label}
+                {stage ? ` · ${stages.data?.find((s) => s.key === stage)?.label ?? stage}` : ""}
+              </span>
+              <span className="text-2xs text-muted-foreground tabular">
+                {(tasks.data ?? []).length}
+              </span>
+              {stage && (
+                <Button size="sm" variant="ghost" onClick={() => setStage(undefined)}>
+                  <X className="size-3" aria-hidden /> All stages
+                </Button>
+              )}
+            </div>
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={exporting || (tasks.data ?? []).length === 0}
+              onClick={() =>
+                exportCsv(() =>
+                  utils.mis.csvTasks.fetch({
+                    departmentId: activeDepartment?.id,
+                    employeeId: level.kind === "employee" ? level.id : undefined,
+                    stage,
+                    ...period,
+                  }),
+                )
+              }
+            >
+              <Download className="size-3" aria-hidden /> CSV
+            </Button>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-left">
               <thead>
                 <tr className="border-b border-border">
+                  <th className="label-caps w-10 px-4 py-2.5 text-right">#</th>
                   <th className="label-caps px-4 py-2.5">Reference</th>
                   <th className="label-caps px-4 py-2.5">Title</th>
                   <th className="label-caps px-4 py-2.5">Assignee</th>
@@ -181,10 +311,11 @@ export default function MisPage() {
                 </tr>
               </thead>
               <tbody>
-                {(tasks.data ?? []).map((t) => (
+                {(tasks.data ?? []).map((t, i) => (
                   <tr key={t.id} className="border-b border-border last:border-b-0 hover:bg-muted/40">
+                    <td className="px-4 py-2.5 text-right text-2xs tabular text-muted-foreground">{i + 1}</td>
                     <td className="px-4 py-2.5 text-xs tabular">
-                      <Link href={`/tasks/${t.id}`} className="font-medium hover:underline">
+                      <Link href={`/tasks/${t.id}`} className="font-medium text-info hover:underline">
                         {t.reference}
                       </Link>
                     </td>
@@ -199,7 +330,7 @@ export default function MisPage() {
                 ))}
                 {!tasks.isLoading && (tasks.data ?? []).length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-xs text-muted-foreground">
+                    <td colSpan={7} className="px-4 py-10 text-center text-xs text-muted-foreground">
                       No tasks in this period.
                     </td>
                   </tr>
@@ -237,78 +368,139 @@ function Crumb({
   );
 }
 
+interface Stage {
+  key: NonNullable<StageKey>;
+  label: string;
+}
+
 interface Row {
   id: string;
   label: string;
+  stages: Record<string, number>;
   total: number;
-  open: number;
   overdue: number;
   critical: number;
-  blocked: number;
-  missed: number;
+  neverStarted: number;
+  completedInPeriod: number;
+  onTimeInPeriod: number;
   onTimePercent: number | null;
 }
 
+/**
+ * A row per department or person, a column per stage.
+ *
+ * Every count is a button, not a figure: the number and the list behind it are
+ * counted from the same set, so clicking 4 shows exactly those four. A figure
+ * you cannot open is a figure you have to take on trust.
+ */
 function RowTable({
   heading,
   rows,
+  stages,
   loading,
   activeId,
+  activeStage,
   onDrill,
+  onDrillStage,
+  onExport,
+  exporting,
 }: {
   heading: string;
   rows: Row[];
+  stages: Stage[];
   loading: boolean;
   activeId?: string;
+  activeStage?: StageKey;
   onDrill: (r: Row) => void;
+  onDrillStage: (r: Row, stage: StageKey) => void;
+  onExport: () => void;
+  exporting: boolean;
 }) {
   return (
     <Card className="overflow-hidden">
+      <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-2">
+        <span className="label-caps">{heading}</span>
+        <Button size="sm" variant="ghost" onClick={onExport} disabled={exporting || rows.length === 0}>
+          <Download className="size-3" aria-hidden /> {exporting ? "Preparing…" : "CSV"}
+        </Button>
+      </div>
       <div className="overflow-x-auto">
         <table className="w-full text-left">
           <thead>
-            <tr className="border-b border-border bg-muted/40">
-              <th className="label-caps px-4 py-2.5">{heading}</th>
-              <th className="label-caps px-4 py-2.5 text-right">Open</th>
-              <th className="label-caps px-4 py-2.5 text-right">Overdue</th>
-              <th className="label-caps px-4 py-2.5 text-right">Critical</th>
-              <th className="label-caps px-4 py-2.5 text-right">Blocked</th>
-              <th className="label-caps px-4 py-2.5 text-right">Missed</th>
-              <th className="label-caps px-4 py-2.5 text-right">On time</th>
+            <tr className="border-b border-border">
+              <th className="label-caps w-10 px-3 py-2.5 text-right">#</th>
+              <th className="label-caps px-3 py-2.5">{heading}</th>
+              {stages.map((s) => (
+                <th key={s.key} className="label-caps px-2 py-2.5 text-right whitespace-nowrap">
+                  {s.label}
+                </th>
+              ))}
+              <th className="label-caps px-2 py-2.5 text-right">Overdue</th>
+              <th className="label-caps px-2 py-2.5 text-right">On time</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => (
+            {rows.map((r, i) => (
               <tr
                 key={r.id}
-                onClick={() => onDrill(r)}
                 className={cn(
-                  "cursor-pointer border-b border-border last:border-b-0 hover:bg-muted/40",
+                  "border-b border-border last:border-b-0 hover:bg-muted/40",
                   activeId === r.id && "bg-muted/60",
                 )}
               >
-                <td className="px-4 py-2.5 text-sm font-medium">{r.label}</td>
-                <td className="px-4 py-2.5 text-right text-xs tabular">{r.open}</td>
-                <td className={cn("px-4 py-2.5 text-right text-xs tabular", r.overdue > 0 && "font-medium text-danger")}>
+                <td className="px-3 py-2 text-right text-2xs tabular text-muted-foreground">{i + 1}</td>
+                <td className="px-3 py-2">
+                  <button
+                    type="button"
+                    onClick={() => onDrill(r)}
+                    className="text-left text-sm font-medium hover:underline"
+                  >
+                    {r.label}
+                  </button>
+                </td>
+                {stages.map((s) => {
+                  const n = r.stages[s.key] ?? 0;
+                  const selected = activeId === r.id && activeStage === s.key;
+                  return (
+                    <td key={s.key} className="px-2 py-2 text-right">
+                      <button
+                        type="button"
+                        disabled={n === 0}
+                        onClick={() => onDrillStage(r, s.key)}
+                        aria-label={`${n} ${s.label} for ${r.label}`}
+                        className={cn(
+                          "min-w-6 rounded px-1 text-xs tabular transition-colors",
+                          n === 0 && "cursor-default text-muted-foreground/40",
+                          n > 0 && "hover:bg-primary/10 hover:text-foreground",
+                          selected && "bg-primary/15 font-semibold",
+                          n > 0 && s.key === "blocked" && "text-danger",
+                          n > 0 && s.key === "rejected" && "text-warning",
+                        )}
+                      >
+                        {n}
+                      </button>
+                    </td>
+                  );
+                })}
+                <td
+                  className={cn(
+                    "px-2 py-2 text-right text-xs tabular",
+                    r.overdue > 0 && "font-medium text-danger",
+                  )}
+                >
                   {r.overdue}
                 </td>
-                <td className={cn("px-4 py-2.5 text-right text-xs tabular", r.critical > 0 && "font-medium text-warning")}>
-                  {r.critical}
-                </td>
-                <td className={cn("px-4 py-2.5 text-right text-xs tabular", r.blocked > 0 && "font-medium text-danger")}>
-                  {r.blocked}
-                </td>
-                <td className={cn("px-4 py-2.5 text-right text-xs tabular", r.missed > 0 && "font-medium text-danger")}>
-                  {r.missed}
-                </td>
-                <td className="px-4 py-2.5 text-right text-xs tabular">
+                <td className="px-2 py-2 text-right text-xs tabular">
                   {r.onTimePercent === null ? "—" : `${r.onTimePercent}%`}
                 </td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-xs text-muted-foreground">
+                <td
+                  colSpan={stages.length + 4}
+                  className="px-4 py-10 text-center text-xs text-muted-foreground"
+                >
                   Nothing to show for this period.
                 </td>
               </tr>
@@ -319,6 +511,7 @@ function RowTable({
     </Card>
   );
 }
+
 
 function Metric({
   label,

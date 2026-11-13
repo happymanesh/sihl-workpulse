@@ -50,11 +50,33 @@ export class TaskCommentService {
 
   async list(actor: AuthenticatedUser, taskId: string) {
     await this.loadTaskFor(actor, taskId);
-    return prisma.taskComment.findMany({
-      where: { taskId },
-      include: { author: { select: { id: true, name: true, designation: true } } },
-      orderBy: { createdAt: "asc" },
-    });
+
+    const [comments, history] = await Promise.all([
+      prisma.taskComment.findMany({
+        where: { taskId },
+        include: { author: { select: { id: true, name: true, designation: true } } },
+        orderBy: { createdAt: "asc" },
+      }),
+      prisma.taskStatusHistory.findMany({
+        where: { taskId },
+        select: { toStatus: true, createdAt: true },
+        orderBy: { createdAt: "asc" },
+      }),
+    ]);
+
+    // Notes written before the stage was stamped have nothing on the row. The
+    // status history says what the task was in at that moment, so the stage is
+    // recovered rather than left blank - reconstructed, not invented, and only
+    // where the row itself is silent.
+    return comments.map((c) => ({
+      ...c,
+      relatedStatus:
+        c.relatedStatus ??
+        history.reduce<TaskStatus | null>(
+          (atTime, h) => (h.createdAt <= c.createdAt ? h.toStatus : atTime),
+          null,
+        ),
+    }));
   }
 
   /**
@@ -93,7 +115,11 @@ export class TaskCommentService {
         authorUserId: actor.id,
         body: input.body.trim(),
         kind: input.kind ?? TaskCommentKind.GENERAL,
-        relatedStatus: input.relatedStatus ?? null,
+        // Defaults to the stage the task is in right now. A note's meaning
+        // depends on when it was written - "waiting on the bank" during In
+        // progress and the same words after Completed say different things -
+        // and reconstructing that later from timestamps is guesswork.
+        relatedStatus: input.relatedStatus ?? task.status,
         wasDictated: input.wasDictated ?? false,
         dictatedLanguage: input.dictatedLanguage ?? null,
       },
