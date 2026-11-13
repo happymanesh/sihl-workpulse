@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { trpc, type RouterOutputs } from "@/lib/trpc/client";
+import { formatHhMm } from "@/lib/duration";
 
 /** Occurrences per week, used to express committed load in a comparable unit. */
 const PER_WEEK: Record<string, number> = {
@@ -126,7 +127,7 @@ function DeskCardBlock({
 
         <CardContent className="flex flex-wrap gap-x-10 gap-y-3">
           <Metric label="Activities" value={String(card.activities.length)} />
-          <Metric label="Committed / week" value={`${(weeklyMinutes / 60).toFixed(1)} h`} />
+          <Metric label="Committed / week" value={formatHhMm(weeklyMinutes)} />
           <Metric label="Recurring" value={String(card.activities.filter((a) => a.frequency).length)} />
         </CardContent>
       </Card>
@@ -177,7 +178,7 @@ function DeskCardBlock({
                   <td className="px-4 py-2.5 text-right">
                     <span className="inline-flex items-center gap-1 text-xs tabular text-muted-foreground">
                       <Clock className="size-3" aria-hidden="true" />
-                      {a.estimatedMinutes}m
+                      {formatHhMm(a.estimatedMinutes)}
                     </span>
                   </td>
                   <td className="px-4 py-2.5">

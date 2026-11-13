@@ -3,6 +3,7 @@ import {
   allowedNextStates,
   canTransition,
   isClockPaused,
+  isReviewRequired,
   isTerminal,
   reasonRequiredFor,
   type TransitionRequest,
@@ -14,6 +15,7 @@ function req(overrides: Partial<TransitionRequest> & Pick<TransitionRequest, "fr
     reason: "because",
     checklistSatisfied: true,
     requiresVerification: false,
+    hasNamedReviewer: false,
     hasEvidence: true,
     requiresEvidence: false,
     ...overrides,
@@ -81,6 +83,80 @@ describe("task lifecycle", () => {
       );
       expect(r.ok).toBe(true);
     });
+  });
+
+  /**
+   * What testing found: a reviewer named on an ordinary task type was advisory.
+   * The assignee could close the work without the named person ever seeing it.
+   */
+  describe("a named reviewer is binding, whatever the type", () => {
+    it("blocks Completed -> Closed when a reviewer is named", () => {
+      const r = canTransition(
+        req({
+          from: TaskStatus.COMPLETED,
+          to: TaskStatus.CLOSED,
+          requiresVerification: false,
+          hasNamedReviewer: true,
+        }),
+      );
+      expect(r).toMatchObject({ ok: false, code: "VERIFICATION_REQUIRED" });
+      expect((r as { message: string }).message).toContain("Review pending");
+    });
+
+    it("allows Verified -> Closed once that reviewer has confirmed", () => {
+      const r = canTransition(
+        req({
+          from: TaskStatus.VERIFIED,
+          to: TaskStatus.CLOSED,
+          requiresVerification: false,
+          hasNamedReviewer: true,
+        }),
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    it("still auto-closes when no reviewer is named and the type is silent", () => {
+      const r = canTransition(
+        req({
+          from: TaskStatus.COMPLETED,
+          to: TaskStatus.CLOSED,
+          requiresVerification: false,
+          hasNamedReviewer: false,
+        }),
+      );
+      expect(r.ok).toBe(true);
+    });
+
+    it("says which of the two reasons applies", () => {
+      const byType = canTransition(
+        req({ from: TaskStatus.COMPLETED, to: TaskStatus.CLOSED, requiresVerification: true }),
+      ) as { message: string };
+      expect(byType.message).toContain("task type");
+
+      const byReviewer = canTransition(
+        req({
+          from: TaskStatus.COMPLETED,
+          to: TaskStatus.CLOSED,
+          requiresVerification: false,
+          hasNamedReviewer: true,
+        }),
+      ) as { message: string };
+      expect(byReviewer.message).toContain("reviewer is named");
+    });
+  });
+
+  describe("isReviewRequired", () => {
+    it.each([
+      [false, false, false],
+      [true, false, true],
+      [false, true, true],
+      [true, true, true],
+    ])(
+      "type=%s reviewer=%s -> %s",
+      (requiresVerification, hasNamedReviewer, expected) => {
+        expect(isReviewRequired({ requiresVerification, hasNamedReviewer })).toBe(expected);
+      },
+    );
   });
 
   describe("the checklist gate (TM-FR-006)", () => {

@@ -37,14 +37,20 @@ const SIDE_STATES: TaskStatus[] = [
 
 export function StatusStepper({
   status,
-  requiresVerification,
+  reviewRequired,
   className,
 }: {
   status: TaskStatus;
-  requiresVerification: boolean;
+  /**
+   * Whether Verified is a stage for THIS task - the type demands it, or a
+   * reviewer is named. Not the type's flag alone: a reviewer named on an
+   * ordinary type makes verification mandatory, and a stepper that hid the
+   * stage would promise a close the server then refuses.
+   */
+  reviewRequired: boolean;
   className?: string;
 }) {
-  const steps = MAIN_FLOW.filter((s) => s.status !== "VERIFIED" || requiresVerification);
+  const steps = MAIN_FLOW.filter((s) => s.status !== "VERIFIED" || reviewRequired);
   const isSideState = SIDE_STATES.includes(status);
 
   // In a side-state the task still has a position in the flow - the furthest
@@ -68,7 +74,9 @@ export function StatusStepper({
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs whitespace-nowrap transition-colors",
                 current && "bg-primary font-medium text-primary-foreground",
-                done && "text-success",
+                // Tinted, not just green text: a stage you have passed should
+                // read as cleared at a glance, without comparing shades.
+                done && "bg-success-subtle font-medium text-success",
                 !current && !done && "text-muted-foreground",
               )}
               aria-current={current ? "step" : undefined}

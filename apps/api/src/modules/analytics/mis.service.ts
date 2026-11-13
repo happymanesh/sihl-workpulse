@@ -2,18 +2,19 @@ import { ForbiddenException, Injectable } from "@nestjs/common";
 import { Prisma, TaskStatus, WorkPulseRole, prisma } from "@workpulse/db";
 import type { AuthenticatedUser } from "../auth/identity.service";
 import { excludeConfidentialFromAggregate } from "./visibility-core";
+import {
+  aggregate,
+  aggregateBy,
 
-export interface MisCounts {
-  total: number;
-  open: number;
-  overdue: number;
-  critical: number;
-  blocked: number;
-  missed: number;
-  completedInPeriod: number;
-  onTimeInPeriod: number;
-  onTimePercent: number | null;
-}
+  MIS_STAGES,
+  toCsv,
+  type MisCounts,
+  type MisStageKey,
+  type MisTaskRow,
+} from "./mis-core";
+
+export type { MisCounts, MisStageKey } from "./mis-core";
+export { MIS_STAGES } from "./mis-core";
 
 export interface MisRow extends MisCounts {
   id: string;
@@ -73,51 +74,53 @@ export class MisService {
     };
   }
 
-  private async countsFor(
+  /**
+   * The rows every figure on this screen is counted from.
+   *
+   * One query, not seven per row. The set is deliberately the same one the
+   * drill-down lists: still open, or finished inside the period. That is what
+   * makes a stage count clickable - the number and the list behind it come
+   * from the same definition, so they cannot disagree.
+   */
+  private async rowsFor(
     actor: AuthenticatedUser,
     scope: Prisma.TaskWhereInput,
     periodStart: Date,
     periodEnd: Date,
-  ): Promise<MisCounts> {
-    const now = new Date();
-    const settled: TaskStatus[] = [TaskStatus.CLOSED, TaskStatus.CANCELLED];
-    const done: TaskStatus[] = [TaskStatus.COMPLETED, TaskStatus.VERIFIED, TaskStatus.CLOSED];
-
-    const where = (extra: Prisma.TaskWhereInput) => this.baseWhere(actor, { ...scope, ...extra });
-
-    const [total, open, overdue, critical, blocked, missed, completed] = await Promise.all([
-      prisma.task.count({ where: where({}) }),
-      prisma.task.count({ where: where({ status: { notIn: settled } }) }),
-      prisma.task.count({
-        where: where({
-          dueDate: { lt: now },
-          status: { notIn: [...settled, TaskStatus.VERIFIED] },
-        }),
+    extraSelect: Prisma.TaskSelect = {},
+  ) {
+    return prisma.task.findMany({
+      where: this.baseWhere(actor, {
+        ...scope,
+        OR: [
+          { status: { notIn: [TaskStatus.CLOSED, TaskStatus.CANCELLED] } },
+          { completedAt: { gte: periodStart, lte: periodEnd } },
+        ],
       }),
-      prisma.task.count({ where: where({ priority: "CRITICAL", status: { notIn: settled } }) }),
-      prisma.task.count({ where: where({ status: TaskStatus.BLOCKED }) }),
-      prisma.task.count({ where: where({ isMissed: true }) }),
-      // Fetched rather than counted: "completed on or before the due date" is a
-      // comparison between two columns, which Prisma cannot express as a filter.
-      // One query serves both the completed count and the on-time count.
-      prisma.task.findMany({
-        where: where({ status: { in: done }, completedAt: { gte: periodStart, lte: periodEnd } }),
-        select: { completedAt: true, dueDate: true },
-      }),
-    ]);
+      select: {
+        status: true,
+        dueDate: true,
+        completedAt: true,
+        isMissed: true,
+        priority: true,
+        ...extraSelect,
+      },
+    });
+  }
 
-    const onTime = completed.filter((t) => t.completedAt && t.completedAt <= t.dueDate).length;
-
+  private static asRow(r: {
+    status: TaskStatus;
+    dueDate: Date;
+    completedAt: Date | null;
+    isMissed: boolean;
+    priority: string;
+  }): MisTaskRow {
     return {
-      total,
-      open,
-      overdue,
-      critical,
-      blocked,
-      missed,
-      completedInPeriod: completed.length,
-      onTimeInPeriod: onTime,
-      onTimePercent: completed.length === 0 ? null : Math.round((onTime / completed.length) * 100),
+      status: r.status,
+      dueDate: r.dueDate,
+      completedAt: r.completedAt,
+      isMissed: r.isMissed,
+      priority: r.priority,
     };
   }
 
@@ -126,7 +129,13 @@ export class MisService {
     const permitted = await this.permittedDepartmentIds(actor);
     const scope: Prisma.TaskWhereInput = permitted ? { departmentId: { in: permitted } } : {};
 
-    const counts = await this.countsFor(actor, scope, periodStart, periodEnd);
+    const rows = await this.rowsFor(actor, scope, periodStart, periodEnd);
+    const counts = aggregate(rows.map(MisService.asRow), {
+      now: new Date(),
+      periodStart,
+      periodEnd,
+    });
+
     const confidentialExcluded = excludeConfidentialFromAggregate(actor)
       ? await prisma.task.count({ where: { ...scope, isConfidential: true } })
       : 0;
@@ -148,13 +157,19 @@ export class MisService {
       orderBy: { name: "asc" },
     });
 
-    return Promise.all(
-      departments.map(async (d) => ({
-        id: d.id,
-        label: d.name,
-        ...(await this.countsFor(actor, { departmentId: d.id }, periodStart, periodEnd)),
-      })),
+    const rows = await this.rowsFor(
+      actor,
+      permitted ? { departmentId: { in: permitted } } : {},
+      periodStart,
+      periodEnd,
+      { departmentId: true },
     );
+
+    return aggregateBy(
+      rows.map((r) => ({ ...MisService.asRow(r), key: r.departmentId })),
+      departments.map((d) => ({ id: d.id, label: d.name })),
+      { now: new Date(), periodStart, periodEnd },
+    ).map((r) => ({ id: r.id, label: r.label, ...r.counts }));
   }
 
   /**
@@ -181,19 +196,27 @@ export class MisService {
       orderBy: { name: "asc" },
     });
 
-    return Promise.all(
-      employees.map(async (e) => ({
-        id: e.id,
-        label: e.name,
-        ...(await this.countsFor(actor, { assigneeEmployeeId: e.id }, periodStart, periodEnd)),
-      })),
-    );
+    const rows = await this.rowsFor(actor, { departmentId }, periodStart, periodEnd, {
+      assigneeEmployeeId: true,
+    });
+
+    return aggregateBy(
+      rows.map((r) => ({ ...MisService.asRow(r), key: r.assigneeEmployeeId })),
+      employees.map((e) => ({ id: e.id, label: e.name })),
+      { now: new Date(), periodStart, periodEnd },
+    ).map((r) => ({ id: r.id, label: r.label, ...r.counts }));
   }
 
-  /** Level 4: the underlying tasks. Every figure above is drillable to these. */
+  /**
+   * Level 4: the underlying tasks. Every figure above is drillable to these.
+   *
+   * `stage` narrows to one column of the table above. The statuses it expands
+   * to are the same list the counting used, so the list length always equals
+   * the number that was clicked.
+   */
   async tasksFor(
     actor: AuthenticatedUser,
-    scope: { departmentId?: string; employeeId?: string },
+    scope: { departmentId?: string; employeeId?: string; stage?: MisStageKey },
     periodStart: Date,
     periodEnd: Date,
   ) {
@@ -202,10 +225,13 @@ export class MisService {
       throw new ForbiddenException("You do not have access to that department");
     }
 
+    const stage = scope.stage ? MIS_STAGES.find((s) => s.key === scope.stage) : undefined;
+
     return prisma.task.findMany({
       where: this.baseWhere(actor, {
         departmentId: scope.departmentId,
         assigneeEmployeeId: scope.employeeId,
+        ...(stage ? { status: { in: [...stage.statuses] } } : {}),
         OR: [
           { status: { notIn: [TaskStatus.CLOSED, TaskStatus.CANCELLED] } },
           { completedAt: { gte: periodStart, lte: periodEnd } },
@@ -218,11 +244,101 @@ export class MisService {
         status: true,
         priority: true,
         dueDate: true,
+        completedAt: true,
         isMissed: true,
         assignee: { select: { name: true } },
+        department: { select: { name: true } },
       },
       orderBy: [{ dueDate: "asc" }],
       take: 500,
     });
+  }
+
+  /**
+   * The table above, as a file.
+   *
+   * Built from the same methods the screen calls rather than a second query of
+   * its own: an export that can disagree with what is on screen is worse than
+   * no export, because the disagreement is only found later and by somebody
+   * who was not in the room.
+   */
+  async csvRows(
+    actor: AuthenticatedUser,
+    scope: { departmentId?: string },
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ filename: string; csv: string }> {
+    const rows = scope.departmentId
+      ? await this.byEmployee(actor, scope.departmentId, periodStart, periodEnd)
+      : await this.byDepartment(actor, periodStart, periodEnd);
+
+    const headers = [
+      "#",
+      scope.departmentId ? "Person" : "Department",
+      ...MIS_STAGES.map((s) => s.label),
+      "Total",
+      "Overdue",
+      "Critical",
+      "Never started",
+      "Completed in period",
+      "On time",
+      "On time %",
+    ];
+
+    const body = rows.map((r, i) => [
+      i + 1,
+      r.label,
+      ...MIS_STAGES.map((s) => r.stages[s.key]),
+      r.total,
+      r.overdue,
+      r.critical,
+      r.neverStarted,
+      r.completedInPeriod,
+      r.onTimeInPeriod,
+      r.onTimePercent,
+    ]);
+
+    const period = `${periodStart.toISOString().slice(0, 7)}`;
+    const what = scope.departmentId ? "people" : "departments";
+    return { filename: `workpulse-mis-${what}-${period}.csv`, csv: toCsv(headers, body) };
+  }
+
+  /** One person's underlying tasks, as a file. */
+  async csvTasks(
+    actor: AuthenticatedUser,
+    scope: { departmentId?: string; employeeId?: string; stage?: MisStageKey },
+    periodStart: Date,
+    periodEnd: Date,
+  ): Promise<{ filename: string; csv: string }> {
+    const tasks = await this.tasksFor(actor, scope, periodStart, periodEnd);
+
+    const headers = [
+      "#",
+      "Reference",
+      "Title",
+      "Assignee",
+      "Department",
+      "Status",
+      "Priority",
+      "Due",
+      "Completed",
+      "Never started",
+    ];
+
+    const body = tasks.map((t, i) => [
+      i + 1,
+      t.reference,
+      t.title,
+      t.assignee?.name ?? null,
+      t.department?.name ?? null,
+      t.status,
+      t.priority,
+      t.dueDate.toISOString().slice(0, 10),
+      t.completedAt ? t.completedAt.toISOString().slice(0, 10) : null,
+      t.isMissed ? "yes" : "",
+    ]);
+
+    const period = periodStart.toISOString().slice(0, 7);
+    return { filename: `workpulse-mis-tasks-${period}.csv`, csv: toCsv(headers, body) };
   }
 }

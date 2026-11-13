@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { trpc } from "@/lib/trpc/client";
+import { DurationInput } from "@/components/ui/duration-input";
 
 const PRIORITIES = ["CRITICAL", "URGENT", "HIGH", "MEDIUM", "LOW"] as const;
 const COMPLEXITY = ["LOW", "MEDIUM", "HIGH"] as const;
@@ -34,6 +35,8 @@ export function NewTask({ onCreated }: { onCreated: () => void }) {
   const taskTypes = trpc.reference.taskTypes.useQuery(undefined, { enabled: open });
   const staff = trpc.employee.list.useQuery({ activeOnly: true }, { enabled: open });
   const me = trpc.meta.me.useQuery();
+  // Earlier work this could follow on from. Only fetched once the form opens.
+  const linkable = trpc.task.linkable.useQuery({}, { enabled: open });
 
   const [f, setF] = useState({
     title: "",
@@ -46,6 +49,7 @@ export function NewTask({ onCreated }: { onCreated: () => void }) {
     dueDate: inDays(3),
     estimatedMinutes: 30,
     checklist: "",
+    relatedTaskId: "",
   });
 
   const create = trpc.task.create.useMutation({
@@ -186,13 +190,12 @@ export function NewTask({ onCreated }: { onCreated: () => void }) {
             </Select>
           </Field>
 
-          <Field label="Effort (minutes)" htmlFor="nt-eff">
-            <Input
+          <Field label="Effort" htmlFor="nt-eff">
+            <DurationInput
               id="nt-eff"
-              type="number"
-              min={1}
+              min={5}
               value={f.estimatedMinutes}
-              onChange={(e) => setF({ ...f, estimatedMinutes: Number(e.target.value) })}
+              onChange={(estimatedMinutes) => setF({ ...f, estimatedMinutes })}
             />
           </Field>
 
@@ -209,6 +212,26 @@ export function NewTask({ onCreated }: { onCreated: () => void }) {
               placeholder={"Pull the statement\nMatch against the ledger\nNote any break"}
               onChange={(e) => setF({ ...f, checklist: e.target.value })}
             />
+          </Field>
+
+          <Field
+            label="Follows on from"
+            htmlFor="nt-rel"
+            className="sm:col-span-2"
+            hint="Optional. A reference to earlier work — it does not make this task wait."
+          >
+            <Select
+              id="nt-rel"
+              value={f.relatedTaskId}
+              onChange={(e) => setF({ ...f, relatedTaskId: e.target.value })}
+            >
+              <option value="">Nothing</option>
+              {(linkable.data ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.reference} — {t.title}
+                </option>
+              ))}
+            </Select>
           </Field>
 
           <Field label="Detail" htmlFor="nt-desc" className="sm:col-span-2">
@@ -249,6 +272,7 @@ export function NewTask({ onCreated }: { onCreated: () => void }) {
                 reviewerEmployeeId: f.reviewerEmployeeId || undefined,
                 dueDate: new Date(f.dueDate),
                 estimatedMinutes: f.estimatedMinutes,
+                relatedTaskId: f.relatedTaskId || undefined,
                 checklist: f.checklist
                   .split("\n")
                   .map((l) => l.trim())

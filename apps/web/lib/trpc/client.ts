@@ -1,4 +1,4 @@
-import type { inferRouterOutputs } from "@trpc/server";
+import type { inferRouterInputs, inferRouterOutputs } from "@trpc/server";
 import { createTRPCReact } from "@trpc/react-query";
 import type { AppRouter } from "@workpulse/api/trpc/trpc.service";
 
@@ -15,6 +15,7 @@ export const trpc = createTRPCReact<AppRouter>();
  * surfaces here instead of as an undefined at runtime.
  */
 export type RouterOutputs = inferRouterOutputs<AppRouter>;
+export type RouterInputs = inferRouterInputs<AppRouter>;
 
 /**
  * Requests go to the Next dev/prod server and are proxied to the API by the

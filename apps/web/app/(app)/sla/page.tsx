@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Field, Input, Select } from "@/components/ui/field";
 import { trpc, type RouterOutputs } from "@/lib/trpc/client";
+import { formatHhMm } from "@/lib/duration";
 
 const PRIORITIES = ["CRITICAL", "URGENT", "HIGH", "MEDIUM", "LOW"] as const;
 const TARGETS = ["ASSIGNEE", "REVIEWER", "LINE_MANAGER", "DEPARTMENT_HEAD", "PROCESS_OWNER"] as const;
@@ -19,13 +20,6 @@ const TARGET_LABEL: Record<string, string> = {
 };
 
 type Definition = RouterOutputs["sla"]["definitions"][number];
-
-function hhmm(minutes: number): string {
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m ? `${h}h ${m}m` : `${h}h`;
-}
 
 /**
  * SLA targets, and what happens as one runs out.
@@ -186,12 +180,12 @@ function DefinitionCard({
         <div className="flex flex-wrap gap-x-10 gap-y-2">
           <div className="flex flex-col gap-0.5">
             <span className="label-caps">Resolution</span>
-            <span className="text-sm tabular">{hhmm(definition.resolutionMinutes)}</span>
+            <span className="text-sm tabular">{formatHhMm(definition.resolutionMinutes)}</span>
           </div>
           <div className="flex flex-col gap-0.5">
             <span className="label-caps">First response</span>
             <span className="text-sm tabular">
-              {definition.responseMinutes ? hhmm(definition.responseMinutes) : "—"}
+              {formatHhMm(definition.responseMinutes)}
             </span>
           </div>
         </div>

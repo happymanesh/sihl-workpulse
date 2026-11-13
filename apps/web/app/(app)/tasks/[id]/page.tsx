@@ -2,7 +2,7 @@
 
 import { use, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Check } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, Clock, Plus, Trash2 } from "lucide-react";
 import { StatusStepper } from "@/components/task/status-stepper";
 import { DueDate, PriorityTag, StatusBadge, statusLabel, type Priority, type TaskStatus } from "@/components/task/task-badges";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { DictateButton } from "@/components/dictate-button";
 import { AttachmentsPanel } from "@/components/task/attachments-panel";
 import { ManageTask } from "@/components/task/manage-task";
 import { cn } from "@/lib/utils";
+import { describeDuration, formatHhMm } from "@/lib/duration";
 
 /** Transitions a user can drive from the detail screen, and what to call them. */
 /**
@@ -95,9 +96,21 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     onError: (e) => setError(e.message),
   });
 
-  if (query.isLoading) {
-    return <div className="h-40 animate-pulse rounded-lg bg-muted" />;
-  }
+  const [newStep, setNewStep] = useState("");
+
+  const addItem = trpc.task.addChecklistItem.useMutation({
+    onSuccess: () => {
+      setNewStep("");
+      setError(null);
+      utils.task.byId.invalidate({ id });
+    },
+    onError: (e) => setError(e.message),
+  });
+
+  const removeItem = trpc.task.removeChecklistItem.useMutation({
+    onSuccess: () => utils.task.byId.invalidate({ id }),
+    onError: (e) => setError(e.message),
+  });
 
   if (query.error) {
     const unauthorised = query.error.data?.code === "UNAUTHORIZED";
@@ -111,17 +124,35 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
     );
   }
 
-  const task = query.data!;
+  // Not `query.data!`. A query can sit pending without being "loading" - after
+  // an unauthorised response, on a paused retry - and the assertion turned that
+  // into a white screen rather than a skeleton. Checked, not asserted.
+  if (query.isLoading || !query.data) {
+    return <div className="h-40 animate-pulse rounded-lg bg-muted" />;
+  }
+
+  const task = query.data;
   const status = task.status as TaskStatus;
   const checklistOutstanding = task.checklistItems.filter((i) => !i.isDone && !i.waivedReason).length;
   const sideState = ["BLOCKED", "REJECTED", "ON_HOLD", "DEFERRED", "CANCELLED", "REOPENED"].includes(status);
+  // Past Completed the list of steps is the record of what was required, so it
+  // stops being editable. Mirrors the server, which refuses either way.
+  const checklistFrozen = ["COMPLETED", "VERIFIED", "CLOSED", "CANCELLED"].includes(status);
 
   // What the server says is legal from here, in the order ACTIONS declares so
   // the buttons do not jump around as the task progresses. reasonRequired
   // comes from the same place, rather than being restated in this file.
   const legal = transitions.data?.allowed[status] ?? [];
   const reasonRequired = transitions.data?.reasonRequired ?? [];
-  const available = ACTIONS.filter((a) => legal.includes(a.to)).map((a) => ({
+
+  // The transition map is the same for every task, so it cannot know this one
+  // has a reviewer waiting. reviewRequired comes from the API, computed from
+  // the same rule that refuses the move, so the button and the refusal agree.
+  const reviewPending = task.reviewRequired && status !== "VERIFIED";
+
+  const available = ACTIONS.filter(
+    (a) => legal.includes(a.to) && !(a.to === "CLOSED" && reviewPending),
+  ).map((a) => ({
     ...a,
     needsReason: reasonRequired.includes(a.to),
   }));
@@ -153,7 +184,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       <Card>
         <CardHeader className="flex-col items-start gap-2 sm:flex-row sm:items-center">
           <div className="flex min-w-0 flex-col gap-1">
-            <span className="font-mono text-2xs text-muted-foreground">{task.reference}</span>
+            <span className="font-mono text-2xs font-semibold text-info">{task.reference}</span>
             <h2 className="text-lg font-semibold leading-tight">{task.title}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-2">
@@ -163,7 +194,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
         </CardHeader>
 
         <CardContent className="flex flex-col gap-4">
-          <StatusStepper status={status} requiresVerification={task.taskType.requiresVerification} />
+          <StatusStepper status={status} reviewRequired={task.reviewRequired} />
 
           {sideState && (
             <div className="flex items-start gap-2.5 rounded-md border border-warning/30 bg-warning-subtle px-3 py-2.5">
@@ -177,7 +208,22 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
 
           <dl className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
             <Field label="Assignee" value={task.assignee.name} />
-            <Field label="Reviewer" value={task.reviewer?.name ?? "—"} />
+            <Field
+              label="Reviewer"
+              value={
+                task.reviewer ? (
+                  <span className="flex items-center gap-1.5">
+                    {task.reviewer.name}
+                    {reviewPending && <Badge tone="warning">pending</Badge>}
+                  </span>
+                ) : (
+                  "—"
+                )
+              }
+            />
+            {task.deskCardActivity?.deskCard?.holder && (
+              <Field label="Desk card owner" value={task.deskCardActivity.deskCard.holder.name} />
+            )}
             <Field label="Type" value={task.taskType.name} />
             <Field
               label="Due"
@@ -196,20 +242,56 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 )
               }
             />
-            {task.estimatedMinutes != null && <Field label="Estimated" value={`${task.estimatedMinutes} min`} />}
+            {task.estimatedMinutes != null && (
+              <Field
+                label="Estimated"
+                value={<span title={describeDuration(task.estimatedMinutes)}>{formatHhMm(task.estimatedMinutes)}</span>}
+              />
+            )}
             {task.isMissed && <Field label="Flag" value={<Badge tone="danger">Missed</Badge>} />}
           </dl>
 
+          {(task.relatedTask || task.relatedFrom.length > 0) && (
+            <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+              <span className="label-caps">Related work</span>
+              <div className="flex flex-col gap-1">
+                {task.relatedTask && (
+                  <Link
+                    href={`/tasks/${task.relatedTask.id}`}
+                    className="group flex items-baseline gap-2 text-xs"
+                  >
+                    <span className="text-muted-foreground">Follows on from</span>
+                    <span className="font-mono font-medium text-info">{task.relatedTask.reference}</span>
+                    <span className="group-hover:underline">{task.relatedTask.title}</span>
+                  </Link>
+                )}
+                {task.relatedFrom.map((r) => (
+                  <Link key={r.id} href={`/tasks/${r.id}`} className="group flex items-baseline gap-2 text-xs">
+                    <span className="text-muted-foreground">Followed by</span>
+                    <span className="font-mono font-medium text-info">{r.reference}</span>
+                    <span className="group-hover:underline">{r.title}</span>
+                  </Link>
+                ))}
+              </div>
+              <p className="text-2xs text-muted-foreground">
+                A reference only — neither task waits on the other.
+              </p>
+            </div>
+          )}
+
           {task.description && (
-            <p className="max-w-prose whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
+            <div className="flex flex-col gap-1.5 border-t border-border pt-3">
+              <span className="label-caps">Details</span>
+              <p className="max-w-prose whitespace-pre-wrap text-sm text-muted-foreground">{task.description}</p>
+            </div>
           )}
         </CardContent>
       </Card>
 
-      {task.checklistItems.length > 0 && (
+      {(task.checklistItems.length > 0 || !checklistFrozen) && (
         <Card>
-          <CardHeader>
-            <CardTitle>
+          <CardHeader className="bg-info-subtle/50">
+            <CardTitle className="text-info">
               Checklist ({task.checklistItems.length - checklistOutstanding}/{task.checklistItems.length})
             </CardTitle>
             {checklistOutstanding > 0 && (
@@ -240,8 +322,59 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                   </Badge>
                 )}
                 {item.isDone && !item.waivedReason && <Check className="ml-auto size-3.5 text-success" />}
+                {!item.isDone && !item.waivedReason && !checklistFrozen && (
+                  <button
+                    type="button"
+                    aria-label={`Remove step: ${item.label}`}
+                    disabled={removeItem.isPending}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      removeItem.mutate({ itemId: item.id });
+                    }}
+                    className="ml-auto text-muted-foreground transition-colors hover:text-danger"
+                  >
+                    <Trash2 className="size-3.5" aria-hidden />
+                  </button>
+                )}
               </label>
             ))}
+
+            {task.checklistItems.length === 0 && (
+              <p className="py-2 text-xs text-muted-foreground">
+                No steps yet. Add the checks this task needs before it can be called done.
+              </p>
+            )}
+
+            {!checklistFrozen && (
+              <form
+                className="flex items-center gap-2 pt-2.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  const label = newStep.trim();
+                  if (!label) return;
+                  addItem.mutate({ taskId: id, label });
+                }}
+              >
+                <input
+                  value={newStep}
+                  onChange={(e) => setNewStep(e.target.value)}
+                  placeholder="Add a step"
+                  aria-label="New checklist step"
+                  maxLength={300}
+                  className="h-8 flex-1 rounded-md border border-input bg-card px-2.5 text-xs"
+                />
+                <Button type="submit" size="sm" variant="outline" disabled={!newStep.trim() || addItem.isPending}>
+                  <Plus className="size-3" aria-hidden /> Add
+                </Button>
+              </form>
+            )}
+
+            {checklistFrozen && task.checklistItems.length > 0 && (
+              <p className="pt-2.5 text-2xs text-muted-foreground">
+                This task is {statusLabel(status).toLowerCase()}, so the checklist is fixed — it is the record of
+                what was required.
+              </p>
+            )}
           </CardContent>
         </Card>
       )}
@@ -249,8 +382,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       {sla.data && <SlaPanel sla={sla.data} />}
 
       <Card>
-        <CardHeader>
-          <CardTitle>Actions</CardTitle>
+        <CardHeader className="bg-primary/5">
+          <CardTitle className="text-primary">Actions</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {error && <p className="text-xs text-danger">{error}</p>}
@@ -344,6 +477,20 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
             )}
           </div>
 
+          {reviewPending && (status === "COMPLETED" || status === "PENDING_REVIEW") && (
+            <div className="flex gap-2.5 rounded-md border border-warning/40 bg-warning/5 px-3 py-2.5">
+              <Clock className="mt-0.5 size-4 shrink-0 text-warning" aria-hidden />
+              <div className="flex flex-col gap-0.5">
+                <p className="text-xs font-medium">Review pending</p>
+                <p className="max-w-xl text-2xs text-muted-foreground">
+                  {task.reviewer
+                    ? `${task.reviewer.name} is named to review this task. It cannot be closed until they verify it.`
+                    : "This task type must be verified before it can be closed. Assign a reviewer, or ask a manager to verify it."}
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-wrap gap-2">
             {available.map((a) => (
               <Button
@@ -383,8 +530,8 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       <AttachmentsPanel taskId={id} taskStatus={task.status} />
 
       <Card>
-        <CardHeader>
-          <CardTitle>Notes</CardTitle>
+        <CardHeader className="bg-success-subtle/50">
+          <CardTitle className="text-success">Notes</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-3">
           {(comments.data ?? []).map((c) => (
@@ -397,6 +544,13 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
                 <Badge tone={c.kind === "GENERAL" ? "neutral" : "info"}>
                   {c.kind.toLowerCase()}
                 </Badge>
+                {/* Which stage the task was in when this was written. The same
+                    words mean different things at In progress and at Completed. */}
+                {c.relatedStatus && (
+                  <span className="text-2xs text-muted-foreground">
+                    at {statusLabel(c.relatedStatus as TaskStatus).toLowerCase()}
+                  </span>
+                )}
                 {c.wasDictated && (
                   <Badge tone="outline" title={c.dictatedLanguage ?? undefined}>
                     dictated
@@ -461,7 +615,7 @@ export default function TaskDetailPage({ params }: { params: Promise<{ id: strin
       </Card>
 
       <Card>
-        <CardHeader>
+        <CardHeader className="bg-muted/60">
           <CardTitle>Activity</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-0">
